@@ -17,9 +17,8 @@
 </script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="fonts/fonts.css?v=11">
 <style>
 :root {
   --paper: #f3eee5; --paper-2: #ebe4d8; --card: #fffdf9; --ink: #16130f; --muted: #6f675c; --faint: #a39a8c; --line: #dcd3c4;
@@ -46,6 +45,7 @@ header { padding: calc(14px + env(safe-area-inset-top)) 16px 0; }
 .brand { display: flex; align-items: center; gap: 8px; margin-inline-end: auto; }
 .brand h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
 .brand svg { width: 22px; height: 16px; color: var(--accent); }
+.install { border: 1px solid var(--accent); color: var(--accent); background: transparent; border-radius: 999px; padding: 3px 12px; font-size: 13px; font-weight: 500; cursor: pointer; margin-inline-end: 4px; }
 .icon-btn { width: 38px; height: 38px; border: 0; background: transparent; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--muted); }
 .icon-btn:hover { background: var(--paper-2); color: var(--ink); }
 .icon-btn svg { width: 21px; height: 21px; }
@@ -183,6 +183,7 @@ details[open] summary::after { transform: rotate(-135deg); }
   <header>
     <div class="bar">
       <div class="brand"><h1>Hams</h1><svg><use href="#i-wave"/></svg></div>
+      <button class="install" id="installChip" hidden>Install</button>
       <button class="icon-btn" id="themeBtn" aria-label="Dark mode"><svg><use href="#i-moon"/></svg></button>
       <button class="icon-btn" id="openSettings" aria-label="Settings"><svg><use href="#i-gear"/></svg></button>
     </div>
@@ -259,6 +260,16 @@ details[open] summary::after { transform: rotate(-135deg); }
       <div class="row"><button class="btn line" id="settingsNewGroup">New group</button></div>
     </div>
 
+    <div class="group" id="offlineGroup">
+      <h3>Use it offline</h3>
+      <p class="note" id="installNote"></p>
+      <div class="row" id="installRow" hidden><button class="btn accent" id="installBtn">Install Hams</button></div>
+      <div id="fileBox">
+        <p class="note" style="margin-top:14px"><b style="font-weight:500; color:var(--ink)">On a laptop with no internet at all:</b> download Hams as a single file and open it in Chrome, Edge or Firefox. Pass it on by USB, Bluetooth or any chat app; it needs nothing else.</p>
+        <a class="btn line" id="downloadLink" href="hams-offline.html" download="hams.html" style="display:inline-block; text-decoration:none">Download Hams (one file)</a>
+      </div>
+    </div>
+
     <div class="group">
       <h3>Sound</h3>
       <div class="pick" id="bandSeg">
@@ -309,6 +320,6 @@ details[open] summary::after { transform: rotate(-135deg); }
   addEventListener('error', () => { if (!window.hamsReady) document.getElementById('loadError').hidden = false; });
   addEventListener('unhandledrejection', (e) => { if (!window.hamsReady) document.getElementById('loadError').hidden = false; });
 </script>
-<script type="module" src="app.js?v=10"></script>
+<script type="module" src="app.js?v=11"></script>
 </body>
 </html>

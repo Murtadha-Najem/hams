@@ -27,6 +27,15 @@ For a private conversation, tap **New group** and agree on a code with the other
 
 It works best with the speaker facing the other device. It has been tested up to 2 m.
 
+## Offline
+
+Hams needs the internet once, to open the page the first time. Its files, fonts included, are then kept on the device, and it opens and works with no connection.
+
+- **Install it:** Settings has an Install button in Chrome and Edge (on Android and on computers). On iPhone, use Share, then Add to Home Screen in Safari. An installed Hams opens from its own icon, and the browser is less likely to clear its files.
+- **One file, for laptops that never had internet:** Settings also offers `hams-offline.html`, the whole app in a single file (about 240 KB). Copy it by USB, Bluetooth or any chat app and open it in Chrome, Edge or Firefox; the microphone works from a local file there. Phones do not open local HTML files reliably, so this route is for laptops.
+
+The one-file copy is built from the app with `npm run build`.
+
 ## Speed
 
 | Mode | 10-byte message | 48-byte message |
@@ -57,7 +66,6 @@ Arabic text is packed at 6 bits a character instead of UTF-8's 16, so Arabic mes
 - **Codes are stored in the browser** on that device, with no extra encryption.
 - **Two devices sending at once** collide, and their messages get through on a later round.
 - **Groups are only as private as the code**, and anyone who has the code can read and write in the group.
-- **The font loads from Google Fonts** on the first visit. It is cached after that.
 
 ## Tests
 

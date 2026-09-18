@@ -1,8 +1,13 @@
 // Offline after the first visit: every file of the app is cached and served from the phone.
 // Files are requested with ?v=N, so an update never mixes old and new code.
-const VERSION = 10;
+const VERSION = 11;
 const CACHE = 'hams-v' + VERSION;
-const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', ...['app.js', 'modem.js', 'protocol.js', 'codec.js'].map((f) => `${f}?v=${VERSION}`)];
+const FILES = [
+  './', 'index.html', 'manifest.webmanifest', 'icon.svg', 'icons/icon-192.png', 'icons/apple-touch-icon.png',
+  'fonts/readex-pro-300-700-arabic.woff2', 'fonts/readex-pro-300-700-latin.woff2', 'fonts/readex-pro-300-700-latin-ext.woff2',
+  'fonts/ibm-plex-mono-400-latin.woff2', 'fonts/ibm-plex-mono-500-latin.woff2',
+  ...['app.js', 'modem.js', 'protocol.js', 'codec.js', 'fonts/fonts.css'].map((f) => `${f}?v=${VERSION}`),
+];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));

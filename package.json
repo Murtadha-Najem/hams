@@ -5,6 +5,7 @@
   "license": "MIT",
   "scripts": {
     "test": "node test/codec.mjs && node test/protocol.mjs && node test/flow.mjs && node test/sim.mjs quick",
-    "sim": "node test/sim.mjs"
+    "sim": "node test/sim.mjs",
+    "build": "node tools/build-offline.mjs"
   }
 }

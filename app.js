@@ -1,5 +1,5 @@
-import { buildPacket, Receiver, PROFILES, profileId, airtime, bitsPerSecond } from './modem.js?v=10';
-import { frameMessage, parseFrame, receiptFrame, Assembler, seal, unseal, SEALED, randomId16, chatContent, parseChat, MAX_CONTENT } from './protocol.js?v=10';
+import { buildPacket, Receiver, PROFILES, profileId, airtime, bitsPerSecond } from './modem.js?v=11';
+import { frameMessage, parseFrame, receiptFrame, Assembler, seal, unseal, SEALED, randomId16, chatContent, parseChat, MAX_CONTENT } from './protocol.js?v=11';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -758,6 +758,41 @@ function finishMeasure() {
     : share >= 0.5 ? 'Inaudible partly works here. Use Robust.' : 'Inaudible does not work between these devices. Use Audible.');
 }
 
+// ---------------------------------------------------------------- installing, and the one-file copy
+
+const fromFile = location.protocol === 'file:';
+const installed = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let installPrompt = null;
+
+addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; renderInstall(); });
+addEventListener('appinstalled', () => { installPrompt = null; renderInstall(); });
+
+function renderInstall() {
+  $('installChip').hidden = !installPrompt || installed();
+  $('installRow').hidden = !installPrompt || installed();
+  $('fileBox').hidden = fromFile;
+  $('installNote').textContent = fromFile
+    ? 'This is the one-file copy of Hams. It runs with no internet, straight from this file.'
+    : installed()
+      ? 'Hams is installed. It opens from its icon with or without internet.'
+      : installPrompt
+        ? 'Install Hams as an app. It then opens from its own icon, with or without internet, and the browser keeps its files.'
+        : isIOS
+          ? 'On iPhone or iPad: in Safari, tap Share, then Add to Home Screen. Hams then opens from its icon with or without internet.'
+          : 'Once opened, Hams works without internet. For an icon that always opens offline, use Install app or Add to Home screen in the browser menu.';
+}
+
+async function install() {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  try { await installPrompt.userChoice; } catch { /* dismissed */ }
+  installPrompt = null;
+  renderInstall();
+}
+$('installChip').addEventListener('click', install);
+$('installBtn').addEventListener('click', install);
+
 // ---------------------------------------------------------------- self-test without sound
 
 $('selfTest').addEventListener('click', async () => {
@@ -800,6 +835,7 @@ $('selfTest').addEventListener('click', async () => {
 // ---------------------------------------------------------------- start
 
 renderTheme();
+renderInstall();
 renderRooms();
 for (const list of Object.values(chats)) for (const m of list) drawn.add(`${m.dev}:${m.id}`);
 renderThread(true);
