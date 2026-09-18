@@ -78,6 +78,34 @@ export class Assembler {
   get(msgId) { return this.msgs.get(msgId); }
 }
 
+// ---------------------------------------------------------------- chat
+
+// A chat message is content of its own type, so it can travel open (the public room) or sealed
+// with a group's code (a private room):
+//   [10][device id: 2][flags][reply-to message id: 2, if flag 1][name length][name][text]
+// name and text are codec.js encodings.
+export const CHAT = 10;
+
+export function chatContent({ deviceId, name = '', text, replyTo = null }) {
+  const n = name ? encodeText(name.slice(0, 16)) : new Uint8Array(0);
+  const head = [CHAT, ...u16(deviceId), replyTo === null ? 0 : 1];
+  if (replyTo !== null) head.push(...u16(replyTo));
+  return Uint8Array.from([...head, n.length, ...n, ...encodeText(text)]);
+}
+
+export function parseChat(c) {
+  if (c[0] !== CHAT || c.length < 6) return null;
+  const deviceId = readU16(c, 1);
+  let i = 4;
+  let replyTo = null;
+  if (c[3] & 1) { replyTo = readU16(c, i); i += 2; }
+  const nl = c[i++];
+  const name = nl ? decodePayload(c.slice(i, i + nl)).text || '' : '';
+  i += nl;
+  if (i >= c.length) return null;
+  return { deviceId, name, replyTo, text: decodePayload(c.slice(i)).text ?? '' };
+}
+
 // ---------------------------------------------------------------- sealed messages
 
 const SALT = new TextEncoder().encode('hams/sealed/v1');

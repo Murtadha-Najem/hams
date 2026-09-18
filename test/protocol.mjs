@@ -1,6 +1,6 @@
 // Long messages, receipts and sealed messages, without sound.
 import assert from 'node:assert/strict';
-import { frameMessage, parseFrame, Assembler, receiptFrame, seal, unseal, PART_SIZE } from '../protocol.js';
+import { frameMessage, parseFrame, Assembler, receiptFrame, seal, unseal, PART_SIZE, chatContent, parseChat } from '../protocol.js';
 import { encodeText, decodePayload } from '../codec.js';
 
 // a short message is one frame
@@ -44,4 +44,14 @@ const tampered = Uint8Array.from(blob);
 tampered[12] ^= 1;
 assert.equal(await unseal(tampered, ['باب-الشرقي-2026']), null);
 console.log(`sealed: +18 bytes, opens with the right code only, rejects tampering`);
+
+// chat content, open and sealed
+const c1 = chatContent({ deviceId: 777, name: 'علي', text: 'منو بالقاعة؟' });
+assert.deepEqual(parseChat(c1), { deviceId: 777, name: 'علي', replyTo: null, text: 'منو بالقاعة؟' });
+const c2 = chatContent({ deviceId: 5, text: 'آني', replyTo: 4242 });
+assert.deepEqual(parseChat(c2), { deviceId: 5, name: '', replyTo: 4242, text: 'آني' });
+const sealedChat = await seal(c1, 'group-code-1');
+assert.deepEqual(parseChat((await unseal(sealedChat, ['group-code-1'])).content), parseChat(c1));
+assert.equal(parseChat(encodeText('plain message')), null);
+console.log(`chat: ${c1.length} bytes for a short message with a name, replies and sealing round-trip`);
 console.log('protocol: all checks pass');

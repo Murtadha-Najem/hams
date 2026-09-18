@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="ar" dir="rtl" data-theme="light">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>همس</title>
-<meta name="description" content="أرسل رسائل بين الأجهزة بالصوت، بدون إنترنت">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Hams</title>
+<meta name="description" content="Chat with nearby devices by sound. No internet.">
 <meta name="theme-color" content="#f3eee5" id="themeColor">
 <script>
   // light by default; a saved choice applies before the page draws, so there is no flash
@@ -22,169 +22,145 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Readex+Pro:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --paper: #f3eee5; --paper-2: #ebe4d8; --ink: #16130f; --muted: #6f675c; --faint: #a39a8c; --line: #dcd3c4;
-  --accent: #d9480f; --accent-ink: #fff8f0; --accent-soft: #f6dccb; --ok: #2f7d4f; --bad: #b3261e;
-  --font: "Readex Pro", "Segoe UI", Tahoma, sans-serif; --mono: "IBM Plex Mono", Consolas, monospace;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --paper: #121110; --paper-2: #1b1917; --ink: #f1ece3; --muted: #9c9486; --faint: #6b645a; --line: #2b2825;
-    --accent: #ff6b3d; --accent-ink: #1a0d06; --accent-soft: #3a2117; --ok: #5cc28a; --bad: #ff7a6e;
-  }
+  --paper: #f3eee5; --paper-2: #ebe4d8; --card: #fffdf9; --ink: #16130f; --muted: #6f675c; --faint: #a39a8c; --line: #dcd3c4;
+  --accent: #d9480f; --accent-ink: #fff8f0; --mine: #f8d9c6; --ok: #2f7d4f; --bad: #b3261e;
+  --n0: #b4410f; --n1: #0f766e; --n2: #6d28d9; --n3: #a16207; --n4: #be185d; --n5: #1d4ed8;
+  --font: "Readex Pro", "Segoe UI", system-ui, sans-serif; --mono: "IBM Plex Mono", Consolas, monospace;
 }
 :root[data-theme="dark"] {
-  --paper: #121110; --paper-2: #1b1917; --ink: #f1ece3; --muted: #9c9486; --faint: #6b645a; --line: #2b2825;
-  --accent: #ff6b3d; --accent-ink: #1a0d06; --accent-soft: #3a2117; --ok: #5cc28a; --bad: #ff7a6e;
+  --paper: #121110; --paper-2: #1b1917; --card: #1f1c19; --ink: #f1ece3; --muted: #9c9486; --faint: #6b645a; --line: #2e2a26;
+  --accent: #ff6b3d; --accent-ink: #1a0d06; --mine: #45271a; --ok: #5cc28a; --bad: #ff7a6e;
+  --n0: #ff8a5c; --n1: #4fd1c5; --n2: #b69cff; --n3: #f0b449; --n4: #f472b6; --n5: #7aa7ff;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; background: var(--paper); color: var(--ink); }
-body { font: 400 16px/1.7 var(--font); padding: 0 20px calc(40px + env(safe-area-inset-bottom)); -webkit-tap-highlight-color: transparent; }
-main { max-width: 560px; margin: 0 auto; }
+html, body { margin: 0; height: 100%; background: var(--paper); color: var(--ink); }
+body { font: 400 16px/1.55 var(--font); -webkit-tap-highlight-color: transparent; }
 button { font: inherit; color: inherit; }
-.mono, .num { font-family: var(--mono); font-feature-settings: "tnum"; }
 [hidden] { display: none !important; }
+svg { flex: none; }
 
-/* ---------- top */
-.top { display: flex; align-items: center; gap: 14px; padding: 26px 0 0; }
-.brand { display: flex; align-items: baseline; gap: 10px; }
-.brand h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: 0; line-height: 1; }
-.brand .wave { width: 26px; height: 18px; color: var(--accent); align-self: center; }
-.top .live { margin-inline-start: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 7px; }
-.top .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
-.top .live.on { color: var(--ink); }
-.top .live.on i { background: var(--accent); animation: blink 1.6s ease-in-out infinite; }
-@keyframes blink { 50% { opacity: .25; } }
-.icon-btn { width: 40px; height: 40px; border: 0; background: transparent; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--muted); }
+/* ---------- app frame: header, thread, composer */
+.app { height: 100dvh; display: flex; flex-direction: column; max-width: 680px; margin: 0 auto; }
+header { padding: calc(14px + env(safe-area-inset-top)) 16px 0; }
+.bar { display: flex; align-items: center; gap: 6px; }
+.brand { display: flex; align-items: center; gap: 8px; margin-inline-end: auto; }
+.brand h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em; }
+.brand svg { width: 22px; height: 16px; color: var(--accent); }
+.icon-btn { width: 38px; height: 38px; border: 0; background: transparent; border-radius: 50%; display: grid; place-items: center; cursor: pointer; color: var(--muted); }
 .icon-btn:hover { background: var(--paper-2); color: var(--ink); }
-.icon-btn svg { width: 22px; height: 22px; }
-.tagline { color: var(--muted); font-size: 14px; margin: 6px 0 0; font-weight: 300; }
+.icon-btn svg { width: 21px; height: 21px; }
 
-/* ---------- mode switch: two words, an underline */
-.modes { display: flex; gap: 28px; margin: 28px 0 22px; border-bottom: 1px solid var(--line); }
-.modes button { border: 0; background: none; padding: 0 0 12px; font-size: 20px; font-weight: 500; color: var(--faint); cursor: pointer; position: relative; }
-.modes button[aria-selected="true"] { color: var(--ink); }
-.modes button[aria-selected="true"]::after { content: ""; position: absolute; inset-inline: 0; bottom: -1px; height: 3px; background: var(--accent); border-radius: 3px 3px 0 0; }
-.modes .badge { display: none; font-family: var(--mono); font-size: 11px; font-weight: 500; background: var(--accent); color: var(--accent-ink); border-radius: 10px; padding: 1px 7px; margin-inline-start: 6px; vertical-align: 3px; }
-.modes .badge.on { display: inline; }
-section[role="tabpanel"] { display: none; }
-section[role="tabpanel"].on { display: block; animation: rise .25s ease-out; }
-@keyframes rise { from { opacity: 0; transform: translateY(6px); } }
+.rooms { display: flex; gap: 6px; overflow-x: auto; padding: 12px 0; scrollbar-width: none; }
+.rooms::-webkit-scrollbar { display: none; }
+.room { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 5px 13px; font-size: 14px; cursor: pointer; }
+.room svg { width: 14px; height: 14px; color: var(--muted); }
+.room[aria-selected="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.room[aria-selected="true"] svg { color: var(--paper); }
+.room .count { font-family: var(--mono); font-size: 11px; background: var(--accent); color: var(--accent-ink); border-radius: 9px; padding: 0 6px; }
+.room.add { border-style: dashed; color: var(--muted); }
+.roominfo { font-size: 12.5px; color: var(--muted); padding: 0 0 10px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+.roominfo .live { display: inline-flex; align-items: center; gap: 6px; margin-inline-start: auto; white-space: nowrap; }
+.roominfo .live i { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.roominfo .live.on { color: var(--ink); }
+.roominfo .live.on i { background: var(--accent); animation: blink 1.6s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .25; } }
 
-/* ---------- composer */
-.composer textarea { width: 100%; min-height: 150px; border: 0; background: transparent; resize: none; padding: 0; color: var(--ink); font: 400 23px/1.6 var(--font); }
-.composer textarea::placeholder { color: var(--faint); }
-.composer textarea:focus { outline: none; }
-.meta { font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); min-height: 1.6em; margin-top: 6px; }
-.meta.bad { color: var(--bad); }
-.rule { height: 1px; background: var(--line); margin: 14px 0 16px; }
+.thread { flex: 1; overflow-y: auto; padding: 14px 16px 8px; display: flex; flex-direction: column; gap: 3px; overscroll-behavior: contain; }
+.empty { margin: auto; text-align: center; color: var(--muted); max-width: 300px; font-size: 14px; }
+.empty svg { width: 40px; height: 30px; color: var(--accent); margin-bottom: 10px; }
+.empty b { display: block; color: var(--ink); font-size: 16px; font-weight: 500; margin-bottom: 4px; }
 
-/* option chips, each opening its own small panel */
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 6px 14px; font-size: 14px; cursor: pointer; color: var(--ink); }
-.chip svg { width: 15px; height: 15px; color: var(--muted); }
-.chip[aria-expanded="true"] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
-.chip[aria-expanded="true"] svg { color: var(--paper); }
-.chip.sealed:not([aria-expanded="true"]) { border-color: var(--accent); color: var(--accent); }
-.chip.sealed:not([aria-expanded="true"]) svg { color: var(--accent); }
-.opt { margin-top: 14px; padding: 16px; background: var(--paper-2); border-radius: 18px; }
-.opt h3 { margin: 0 0 10px; font-size: 13px; font-weight: 500; color: var(--muted); }
-.opt .note { margin: 10px 0 0; }
-.opt .btn { margin-top: 12px; }
-.pick { display: flex; flex-wrap: wrap; gap: 6px; }
-.pick button { border: 1px solid var(--line); background: var(--paper); border-radius: 12px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
-.pick button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
-.pick + .pick { margin-top: 8px; }
-.stepper { display: flex; align-items: center; gap: 14px; }
-.stepper button { width: 38px; height: 38px; border-radius: 50%; border: 1px solid var(--line); background: var(--paper); font-size: 20px; line-height: 1; cursor: pointer; }
-.stepper output { font-family: var(--mono); font-size: 26px; font-weight: 500; min-width: 26px; text-align: center; }
-.stepper span { color: var(--muted); font-size: 14px; }
-select, input[type="text"], input[type="password"] {
-  width: 100%; font: inherit; font-size: 15px; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 10px 13px;
-}
-select:focus, input:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
-input[type="range"] { width: 100%; accent-color: var(--accent); margin-top: 4px; }
-.note { font-size: 13px; color: var(--muted); font-weight: 300; line-height: 1.6; }
+/* bubbles */
+.m { display: flex; flex-direction: column; align-items: flex-start; max-width: 82%; }
+.m.new { animation: pop .18s ease-out; }
+@keyframes pop { from { opacity: 0; transform: translateY(4px); } }
+.m.mine { align-self: flex-end; align-items: flex-end; }
+.m.gap { margin-top: 10px; }
+.m .who { font-size: 12.5px; font-weight: 600; margin: 0 12px 2px; }
+.bubble { background: var(--card); border: 1px solid var(--line); border-radius: 18px; border-end-start-radius: 6px; padding: 7px 12px 5px; cursor: pointer; min-width: 64px; }
+.m.mine .bubble { background: var(--mine); border-color: transparent; border-end-start-radius: 18px; border-end-end-radius: 6px; }
+.bubble .text { white-space: pre-wrap; word-break: break-word; font-size: 15.5px; line-height: 1.45; unicode-bidi: plaintext; }
+.bubble .quote { border-inline-start: 3px solid var(--accent); background: rgba(127,110,90,.1); border-radius: 6px; padding: 3px 9px; margin: 2px 0 6px; font-size: 13px; color: var(--muted); max-width: 100%; }
+.bubble .quote b { display: block; font-size: 12px; color: var(--ink); font-weight: 600; }
+.bubble .quote span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; }
+.bubble .meta { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+.tick { width: 16px; height: 11px; color: var(--muted); }
+.tick.done { color: var(--accent); }
+.tick.fail { color: var(--bad); width: 13px; height: 13px; }
+.m .actions { display: flex; gap: 14px; font-size: 13px; margin: 5px 12px 2px; color: var(--muted); flex-wrap: wrap; }
+.m .actions button { border: 0; background: none; padding: 0; cursor: pointer; color: var(--ink); font-weight: 500; }
+.m .actions .bad { color: var(--bad); }
 
-/* send button: a disc with a progress ring */
-.sendbar { display: flex; align-items: center; gap: 16px; margin-top: 26px; }
-.sendbar .status { flex: 1; font-size: 14px; color: var(--muted); min-height: 1.5em; }
-.status.ok { color: var(--ok); } .status.bad { color: var(--bad); } .status.warn { color: var(--accent); }
-.disc { position: relative; width: 76px; height: 76px; flex: none; border: 0; border-radius: 50%; background: var(--accent); color: var(--accent-ink); cursor: pointer; display: grid; place-items: center; transition: transform .15s; }
-.disc:active { transform: scale(.96); }
-.disc:disabled { opacity: .4; cursor: default; }
-.disc svg.glyph { width: 30px; height: 30px; }
-.disc .ring { position: absolute; inset: -7px; width: calc(100% + 14px); height: calc(100% + 14px); transform: rotate(-90deg); pointer-events: none; }
-.disc .ring circle { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 283; stroke-dashoffset: 283; transition: stroke-dashoffset .15s linear; }
-.disc.busy { background: var(--ink); color: var(--paper); }
-.sendlabel { font-size: 12px; color: var(--muted); text-align: center; margin-top: 6px; }
-.names { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.name { font-size: 13px; padding: 3px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); }
+/* composer */
+.composer { padding: 8px 12px calc(6px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--paper); }
+.state { font-size: 12.5px; color: var(--muted); padding: 0 6px 6px; display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.state span { flex: 1; min-width: 0; }
+.state button { white-space: nowrap; border: 0; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 2px 12px; font-size: 12.5px; cursor: pointer; font-weight: 500; }
+.state .bad { color: var(--bad); }
+.replying { display: flex; align-items: center; gap: 10px; margin: 0 4px 8px; padding: 6px 10px; border-inline-start: 3px solid var(--accent); background: var(--paper-2); border-radius: 8px; font-size: 13px; }
+.replying div { flex: 1; min-width: 0; }
+.replying b { display: block; font-size: 12px; }
+.replying span { display: block; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; }
+.replying button { border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; }
+.cbar { display: flex; align-items: flex-end; gap: 8px; }
+.cbar textarea { flex: 1; resize: none; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 22px; padding: 10px 16px; font: 400 16px/1.4 var(--font); max-height: 132px; unicode-bidi: plaintext; }
+.cbar textarea:focus { outline: none; border-color: var(--ink); }
+.csend { width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; cursor: pointer; }
+.csend:disabled { opacity: .35; cursor: default; }
+.csend svg { width: 20px; height: 20px; }
+.sig { text-align: center; font-size: 11px; color: var(--faint); padding-top: 6px; letter-spacing: .02em; }
+.sig a { color: inherit; text-decoration: none; }
+.sig a:hover { color: var(--ink); }
 
-/* ---------- listening */
-.ear { display: grid; place-items: center; padding: 18px 0 8px; }
-.ear button { --lvl: 0; position: relative; width: 168px; height: 168px; border-radius: 50%; border: 1px solid var(--line); background: var(--paper-2); cursor: pointer; display: grid; place-items: center; }
-.ear button::before, .ear button::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid var(--accent); opacity: 0; transition: transform .12s linear, opacity .3s; }
-.ear button.on { background: var(--ink); border-color: var(--ink); }
-.ear button.on::before { opacity: calc(.15 + var(--lvl) * .7); transform: scale(calc(1.08 + var(--lvl) * .22)); }
-.ear button.on::after { opacity: calc(.08 + var(--lvl) * .45); transform: scale(calc(1.2 + var(--lvl) * .45)); }
-.ear svg { width: 46px; height: 46px; color: var(--ink); }
-.ear button.on svg { color: var(--accent); }
-.ear .label { margin-top: 18px; font-size: 17px; font-weight: 500; }
-.ear .sub { font-size: 13px; color: var(--muted); margin-top: 2px; min-height: 1.5em; text-align: center; }
-.ear .sub.ok { color: var(--ok); } .ear .sub.warn { color: var(--accent); } .ear .sub.bad { color: var(--bad); }
-.thin { height: 2px; background: var(--line); border-radius: 2px; overflow: hidden; margin: 16px auto 0; max-width: 220px; }
-.thin i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
-canvas.spec { width: 100%; height: 56px; display: block; margin-top: 18px; }
-.axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: var(--faint); direction: ltr; }
-
-.inbox-head { display: flex; align-items: baseline; justify-content: space-between; margin: 30px 0 4px; }
-.inbox-head h2 { margin: 0; font-size: 15px; font-weight: 500; color: var(--muted); }
-.msg { padding: 18px 0; border-bottom: 1px solid var(--line); }
-.msg:first-child { border-top: 1px solid var(--line); }
-.msg .body { font-size: 19px; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
-.msg .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; font-size: 12.5px; color: var(--muted); }
-.msg .foot .when { font-family: var(--mono); }
-.msg .foot .lock { color: var(--accent); display: inline-flex; align-items: center; gap: 4px; }
-.msg .foot .lock svg { width: 13px; height: 13px; }
-.msg .foot .sp { flex: 1; }
-.msg .foot button { border: 0; background: none; color: var(--ink); font-size: 13px; cursor: pointer; padding: 2px 0; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line); }
-.empty { color: var(--faint); font-size: 15px; padding: 26px 0; text-align: center; border-top: 1px solid var(--line); }
-
-/* ---------- settings page */
-.back { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; margin: 26px 0 6px; font-size: 14px; }
+/* ---------- sheets: welcome, new group, settings */
+.sheet { position: fixed; inset: 0; background: var(--paper); z-index: 20; overflow-y: auto; animation: rise .22s ease-out; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+.sheet .inner { max-width: 520px; margin: 0 auto; padding: calc(22px + env(safe-area-inset-top)) 20px 40px; }
+.sheet h2 { font-size: 28px; font-weight: 600; margin: 10px 0 6px; letter-spacing: -0.01em; }
+.back { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; font-size: 14px; }
 .back svg { width: 18px; height: 18px; }
-.settings h2 { font-size: 28px; font-weight: 600; margin: 0 0 8px; }
-.group { padding: 22px 0; border-bottom: 1px solid var(--line); }
+.lede { color: var(--muted); font-size: 15px; margin: 0 0 18px; font-weight: 300; }
+.group { padding: 20px 0; border-bottom: 1px solid var(--line); }
+.group:last-of-type { border-bottom: 0; }
 .group h3 { margin: 0 0 4px; font-size: 16px; font-weight: 600; }
-.group > .note:first-of-type { margin: 0 0 12px; }
+.note { font-size: 13px; color: var(--muted); font-weight: 300; line-height: 1.55; margin: 0 0 10px; }
+input[type="text"], input[type="password"] { width: 100%; font: inherit; font-size: 16px; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 11px 14px; }
+input:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
 .row > * { flex: 1 1 140px; }
 .row > .btn { flex: 0 0 auto; }
-.btn { border: 0; border-radius: 12px; padding: 10px 18px; font-size: 14px; font-weight: 500; cursor: pointer; background: var(--ink); color: var(--paper); }
+.btn { border: 0; border-radius: 12px; padding: 11px 20px; font-size: 15px; font-weight: 500; cursor: pointer; background: var(--ink); color: var(--paper); }
+.btn.accent { background: var(--accent); color: var(--accent-ink); }
 .btn.line { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-.switch { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; cursor: pointer; font-size: 15px; }
-.switch input { appearance: none; width: 46px; height: 28px; border-radius: 14px; background: var(--line); position: relative; cursor: pointer; flex: none; transition: background .2s; }
-.switch input::after { content: ""; position: absolute; top: 3px; inset-inline-start: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--paper); transition: inset-inline-start .2s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
-.switch input:checked { background: var(--accent); }
-.switch input:checked::after { inset-inline-start: 21px; }
-.codes { margin-top: 6px; }
-.code { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
-.code svg { width: 16px; height: 16px; color: var(--accent); }
-.code b { font-weight: 500; }
-.code .sp { flex: 1; }
-.code button { border: 0; background: none; color: var(--bad); font-size: 13px; cursor: pointer; }
-.devnum { font-family: var(--mono); color: var(--ink); }
-canvas.sweep { width: 100%; height: 56px; display: block; margin-top: 14px; }
+.btn.big { width: 100%; padding: 14px; font-size: 16px; margin-top: 14px; }
+.btn:disabled { opacity: .4; cursor: default; }
+.pick { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick button { border: 1px solid var(--line); background: var(--card); border-radius: 12px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
+.pick button[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.pick + .pick { margin-top: 8px; }
+.list .item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.list .item svg { width: 15px; height: 15px; color: var(--accent); }
+.list .item b { font-weight: 500; }
+.list .item .sp { flex: 1; }
+.list .item button { border: 0; background: none; color: var(--bad); font-size: 13px; cursor: pointer; }
+.status { font-size: 13.5px; margin-top: 10px; min-height: 1.4em; color: var(--muted); }
+.status.ok { color: var(--ok); } .status.bad { color: var(--bad); } .status.warn { color: var(--accent); }
+canvas { width: 100%; height: 56px; display: block; margin-top: 14px; }
+.axis { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 10.5px; color: var(--faint); }
 dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 14px; margin: 12px 0 0; }
 dl.kv dt { color: var(--muted); }
 dl.kv dd { margin: 0; }
 details summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; font-size: 16px; font-weight: 600; }
 details summary::-webkit-details-marker { display: none; }
-details summary::after { content: ""; width: 9px; height: 9px; border-inline-start: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); transition: transform .2s; }
-details[open] summary::after { transform: rotate(135deg); }
-.status { font-size: 14px; margin-top: 10px; min-height: 1.4em; color: var(--muted); }
-footer { margin-top: 40px; font-size: 12px; color: var(--faint); text-align: center; }
-footer a { color: inherit; }
+details summary::after { content: ""; width: 8px; height: 8px; border-inline-end: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); transition: transform .2s; }
+details[open] summary::after { transform: rotate(-135deg); }
+.mono { font-family: var(--mono); }
+.welcome .mark { width: 64px; height: 64px; margin-top: 8vh; }
+.welcome h2 { font-size: 40px; margin-top: 18px; }
+.welcome ol { padding-inline-start: 20px; color: var(--muted); font-size: 14.5px; margin: 0 0 26px; }
+.welcome ol li { margin-bottom: 4px; }
+.sheet .sig { padding-top: 26px; }
 </style>
 </head>
 <body>
@@ -194,144 +170,119 @@ footer a { color: inherit; }
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M19.5 14.6A8 8 0 0 1 9.4 4.5a8 8 0 1 0 10.1 10.1Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M21.5 12h-2M4.5 12h-2M18.7 5.3l-1.4 1.4M6.7 17.3l-1.4 1.4M18.7 18.7l-1.4-1.4M6.7 6.7 5.3 5.3"/></g></symbol>
   <symbol id="i-lock" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="10" height="7" rx="1.8"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></g></symbol>
-  <symbol id="i-globe" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/></g></symbol>
-  <symbol id="i-people" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="6" cy="5.5" r="2.3"/><path d="M2 13c.6-2.3 2.1-3.4 4-3.4s3.4 1.1 4 3.4"/><path d="M10.5 3.4a2.3 2.3 0 0 1 0 4.3M12 9.9c1 .5 1.7 1.5 2 3.1"/></g></symbol>
-  <symbol id="i-tune" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2 8h1.5M5 5v6M8 3v10M11 5.5v5M14 8h0"/></g></symbol>
-  <symbol id="i-send" viewBox="0 0 30 30"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 15h0"/><path d="M11 11v8"/><path d="M16 6v18"/><path d="M21 10v10"/><path d="M26 13.5v3"/></g></symbol>
-  <symbol id="i-stop" viewBox="0 0 30 30"><rect x="9" y="9" width="12" height="12" rx="2.5" fill="currentColor"/></symbol>
-  <symbol id="i-ear" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M16 30c-2-2.6-3-5.6-3-9a11 11 0 0 1 22 0c0 4.3-2.3 6.4-4.4 8.3-2 1.8-2.6 3.4-2.6 5.7a5 5 0 0 1-9.4 2.4"/><path d="M19.5 21a4.5 4.5 0 0 1 9 0c0 2-1.4 3-2.8 3.9"/></g></symbol>
-  <symbol id="i-back" viewBox="0 0 18 18"><path d="M7 4l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-hash" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M6 2.5 5 13.5M11 2.5l-1 11M2.5 6h11M2 10.5h11"/></g></symbol>
+  <symbol id="i-send" viewBox="0 0 20 20"><path d="M3 10h11M10 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-back" viewBox="0 0 18 18"><path d="M11 4 6 9l5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 11"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="5.5" r="4.3"/><path d="M8 3.2v2.4l1.6 1"/></g></symbol>
+  <symbol id="i-tick" viewBox="0 0 16 11"><path d="M3 5.8 6.2 9 13 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-ticks" viewBox="0 0 16 11"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5.8 4.2 9 11 2"/><path d="M7.6 8.4 8.2 9 15 2"/></g></symbol>
+  <symbol id="i-fail" viewBox="0 0 16 16"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6.3"/><path d="M8 4.6v4.1M8 11.3h0"/></g></symbol>
 </svg>
 
-<main>
-  <div class="top">
-    <div class="brand"><h1>همس</h1><svg class="wave"><use href="#i-wave"/></svg></div>
-    <span class="live" id="live"><i></i><span id="liveText">ما يستمع</span></span>
-    <button class="icon-btn" id="themeBtn" aria-label="الوضع الليلي"><svg><use href="#i-moon"/></svg></button>
-    <button class="icon-btn" id="openSettings" aria-label="الإعدادات" style="margin-inline-start:-8px"><svg><use href="#i-gear"/></svg></button>
+<div class="app">
+  <header>
+    <div class="bar">
+      <div class="brand"><h1>Hams</h1><svg><use href="#i-wave"/></svg></div>
+      <button class="icon-btn" id="themeBtn" aria-label="Dark mode"><svg><use href="#i-moon"/></svg></button>
+      <button class="icon-btn" id="openSettings" aria-label="Settings"><svg><use href="#i-gear"/></svg></button>
+    </div>
+    <div class="rooms" id="rooms" role="tablist" aria-label="Rooms"></div>
+    <div class="roominfo"><span id="roomInfo"></span><span class="live" id="live"><i></i><span id="liveText">Not listening</span></span></div>
+  </header>
+
+  <div class="thread" id="thread" aria-live="polite"></div>
+
+  <div class="composer">
+    <div class="state" id="state"></div>
+    <div class="replying" id="replying" hidden>
+      <div><b id="replyName"></b><span id="replyText"></span></div>
+      <button id="replyCancel" aria-label="Cancel reply">&times;</button>
+    </div>
+    <div class="cbar">
+      <textarea id="input" rows="1" placeholder="Message" dir="auto" aria-label="Message"></textarea>
+      <button class="csend" id="sendBtn" aria-label="Send" disabled><svg><use href="#i-send"/></svg></button>
+    </div>
+    <div class="sig">Made by <a href="https://github.com/murtadha203/hams">Murtadha</a></div>
   </div>
-  <p class="tagline">رسائل بالصوت بين الأجهزة القريبة، بدون إنترنت.</p>
+</div>
 
-  <div id="mainView">
-    <nav class="modes" role="tablist">
-      <button role="tab" data-tab="send" aria-selected="true">أرسل</button>
-      <button role="tab" data-tab="inbox" aria-selected="false">استلم<span class="badge num" id="badge"></span></button>
-    </nav>
-
-    <section role="tabpanel" id="send" class="on">
-      <div class="composer">
-        <textarea id="msg" placeholder="شنو تريد توصل؟"></textarea>
-        <div class="meta" id="msgMeta"></div>
-      </div>
-      <div class="rule"></div>
-
-      <div class="chips">
-        <button class="chip" id="chipPriv" data-opt="optPriv" aria-expanded="false"><svg><use href="#i-globe"/></svg><span></span></button>
-        <button class="chip" id="chipNeed" data-opt="optNeed" aria-expanded="false"><svg><use href="#i-people"/></svg><span></span></button>
-        <button class="chip" id="chipMode" data-opt="optMode" aria-expanded="false"><svg><use href="#i-tune"/></svg><span></span></button>
-      </div>
-
-      <div class="opt" id="optPriv" hidden>
-        <h3>منو يگدر يقراها؟</h3>
-        <div class="pick" id="privSeg">
-          <button data-v="public" aria-pressed="true">الكل</button>
-          <button data-v="sealed" aria-pressed="false">بس اللي عندهم الرمز</button>
-        </div>
-        <div id="sealBox" hidden style="margin-top:12px">
-          <select id="codePick" aria-label="الرمز"></select>
-          <p class="note" id="sealNote"></p>
-          <button class="btn" id="goCodes" hidden>أضف رمز</button>
-        </div>
-      </div>
-
-      <div class="opt" id="optNeed" hidden>
-        <h3>البث يوقف بعد ما يأكد الاستلام</h3>
-        <div class="stepper">
-          <button type="button" id="needPlus" aria-label="أكثر">+</button>
-          <output id="needOut">1</output>
-          <button type="button" id="needMinus" aria-label="أقل">&minus;</button>
-          <span id="needText"></span>
-        </div>
-      </div>
-
-      <div class="opt" id="optMode" hidden>
-        <h3>طريقة البث</h3>
-        <div class="pick" id="bandSeg">
-          <button data-v="U" aria-pressed="true">ما ينسمع</button>
-          <button data-v="A" aria-pressed="false">مسموع</button>
-        </div>
-        <div class="pick" id="speedSeg">
-          <button data-v="0" aria-pressed="false">متين</button>
-          <button data-v="1" aria-pressed="true">عادي</button>
-        </div>
-        <p class="note" id="modeNote"></p>
-        <h3 style="margin-top:14px">الصوت</h3>
-        <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.9" aria-label="مستوى الصوت">
-      </div>
-
-      <div class="sendbar">
-        <div>
-          <button class="disc" id="sendBtn" aria-label="إرسال">
-            <svg class="ring" viewBox="0 0 100 100"><circle id="sendRing" cx="50" cy="50" r="45"/></svg>
-            <svg class="glyph" id="sendGlyph"><use href="#i-send"/></svg>
-          </button>
-          <div class="sendlabel" id="sendLabel">إرسال</div>
-        </div>
-        <div class="status" id="sendStatus"></div>
-      </div>
-      <div class="names" id="receipts"></div>
-    </section>
-
-    <section role="tabpanel" id="inbox">
-      <div class="ear">
-        <button id="listenBtn" aria-label="ابدأ الاستماع"><svg><use href="#i-ear"/></svg></button>
-        <div class="label" id="listenLabel">اضغط حتى تبدي تستمع</div>
-        <div class="sub" id="recvStatus">الجهاز يلتقط الرسائل بس وهو يستمع.</div>
-        <div class="thin"><i id="recvBar"></i></div>
-      </div>
-      <div id="specBox" hidden>
-        <canvas class="spec" id="spec" width="560" height="56"></canvas>
-        <div class="axis"><span>0</span><span>5</span><span>10</span><span>15</span><span>20 kHz</span></div>
-      </div>
-
-      <div class="inbox-head"><h2>الرسائل</h2></div>
-      <div id="messages"><div class="empty">ماكو رسائل بعد.</div></div>
-    </section>
+<!-- welcome: a name is required before joining -->
+<div class="sheet welcome" id="welcome" hidden>
+  <div class="inner">
+    <svg class="mark" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="116" fill="var(--accent)"/><g fill="none" stroke="var(--accent-ink)" stroke-width="34" stroke-linecap="round"><path d="M118 256h0"/><path d="M187 206v100"/><path d="M256 136v240"/><path d="M325 188v136"/><path d="M394 232v48"/></g></svg>
+    <h2>Hams</h2>
+    <p class="lede">Chat with the devices around you by sound. No internet, no accounts.</p>
+    <ol>
+      <li>Messages travel as tones most adults cannot hear.</li>
+      <li>Everyone in the same room with Hams open can join.</li>
+      <li>Groups with a shared code keep messages private.</li>
+    </ol>
+    <label for="welcomeName" class="note" style="display:block; margin-bottom:6px">Your name, shown to the people you chat with</label>
+    <input type="text" id="welcomeName" maxlength="16" placeholder="Name" autocomplete="nickname">
+    <button class="btn accent big" id="joinBtn" disabled>Join</button>
+    <p class="note" style="margin-top:10px">Joining turns on the microphone. Hams listens only while this page is open, and nothing leaves your device except the sound it plays.</p>
+    <div class="sig">Made by <a href="https://github.com/murtadha203/hams">Murtadha</a></div>
   </div>
+</div>
 
-  <section role="tabpanel" id="settings" class="settings">
-    <button class="back" id="closeSettings"><svg><use href="#i-back"/></svg>رجوع</button>
-    <h2>الإعدادات</h2>
+<!-- new group -->
+<div class="sheet" id="newGroup" hidden>
+  <div class="inner">
+    <button class="back" data-close="newGroup"><svg><use href="#i-back"/></svg>Back</button>
+    <h2>New group</h2>
+    <p class="lede">Messages in a group are encrypted with its code. Only devices with the same code can read them; everyone else ignores them.</p>
+    <input type="text" id="groupName" maxlength="20" placeholder="Group name, e.g. Team">
+    <div style="height:8px"></div>
+    <input type="password" id="groupCode" placeholder="Shared code" autocomplete="off">
+    <p class="note" style="margin-top:8px">Share the code in person. Longer than 8 characters is harder to guess.</p>
+    <button class="btn accent big" id="groupAdd">Create group</button>
+    <div class="status" id="groupMeta"></div>
+  </div>
+</div>
+
+<!-- settings -->
+<div class="sheet" id="settings" hidden>
+  <div class="inner">
+    <button class="back" data-close="settings"><svg><use href="#i-back"/></svg>Back</button>
+    <h2>Settings</h2>
 
     <div class="group">
-      <h3>اسمك</h3>
-      <p class="note">يوصل للمرسل ويا تأكيد الاستلام. اختياري.</p>
-      <input type="text" id="myName" maxlength="16" placeholder="مثلاً: علي">
-      <p class="note" style="margin-top:10px">رقم هذا الجهاز <span class="devnum" id="devNum"></span>، رقم عشوائي ثابت حتى المرسل يفرّق بين المستلمين.</p>
-      <label class="switch">أرسل تأكيد استلام لما توصلني رسالة وأگدر أقراها <input type="checkbox" id="autoReceipt" checked></label>
+      <h3>Your name</h3>
+      <input type="text" id="myName" maxlength="16" placeholder="Name">
+      <p class="note" style="margin-top:8px">Device number <span class="mono" id="devNum"></span>. A fixed random number that tells your messages apart from others with the same name.</p>
     </div>
 
     <div class="group">
-      <h3>الرموز</h3>
-      <p class="note">كل رسالة محمية توصلك تنجرب عليها هاي الرموز. إذا واحد منها فكّها تظهر عندك، وإذا لا تنتجاهل. محفوظة بهذا الجهاز بس.</p>
-      <div class="codes" id="codeList"></div>
-      <div class="row">
-        <input type="text" id="codeLabel" placeholder="اسم للرمز، مثلاً: الأصدقاء">
-        <input type="password" id="codeSecret" placeholder="الرمز نفسه" autocomplete="off">
-        <button class="btn" id="codeAdd">إضافة</button>
+      <h3>Groups</h3>
+      <p class="note">Each group is a shared code. Removing one hides its messages on this device.</p>
+      <div class="list" id="groupList"></div>
+      <div class="row"><button class="btn line" id="settingsNewGroup">New group</button></div>
+    </div>
+
+    <div class="group">
+      <h3>Sound</h3>
+      <div class="pick" id="bandSeg">
+        <button data-v="U" aria-pressed="true">Inaudible</button>
+        <button data-v="A" aria-pressed="false">Audible</button>
       </div>
-      <div class="status" id="codeMeta"></div>
+      <div class="pick" id="speedSeg">
+        <button data-v="0" aria-pressed="false">Robust</button>
+        <button data-v="1" aria-pressed="true">Normal</button>
+      </div>
+      <p class="note" id="modeNote" style="margin-top:10px"></p>
+      <label class="note" for="vol" style="display:block; margin:12px 0 2px">Volume</label>
+      <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.9">
     </div>
 
     <div class="group">
       <details>
-        <summary>فحص جهازين</summary>
-        <p class="note" style="margin-top:10px">على الجهاز المستلم اضغط "قِس"، وعلى الجهاز الثاني "شغّل المسح". يبين أي ترددات توصل بوضوح ويقترح طريقة البث.</p>
+        <summary>Test two devices</summary>
+        <p class="note" style="margin-top:10px">On the receiving device tap Measure, then tap Play sweep on the other. It shows which frequencies get through and suggests a mode.</p>
         <div class="row">
-          <button class="btn" id="measureBtn">قِس الاستقبال</button>
-          <button class="btn line" id="sweepBtn">شغّل المسح</button>
+          <button class="btn" id="measureBtn">Measure</button>
+          <button class="btn line" id="sweepBtn">Play sweep</button>
         </div>
-        <canvas class="sweep" id="sweepSpec" width="560" height="56"></canvas>
+        <canvas id="sweepSpec" width="520" height="56"></canvas>
         <div class="axis"><span>14</span><span>16</span><span>18</span><span>20</span><span>22 kHz</span></div>
         <div class="status" id="measureStatus"></div>
       </details>
@@ -339,16 +290,16 @@ footer a { color: inherit; }
 
     <div class="group">
       <details>
-        <summary>معلومات تقنية</summary>
-        <dl class="kv" id="devInfo"><dt>المايك</dt><dd>تظهر المعلومات بعد أول استماع.</dd></dl>
-        <div class="row"><button class="btn line" id="selfTest">فحص برمجي بدون سماعة</button></div>
+        <summary>Technical</summary>
+        <dl class="kv" id="devInfo"><dt>Microphone</dt><dd>Shown once listening starts.</dd></dl>
+        <div class="row"><button class="btn line" id="selfTest">Run a self-test without sound</button></div>
         <div class="status mono" id="selfStatus" style="white-space:pre-wrap"></div>
       </details>
     </div>
-  </section>
 
-  <footer>مفتوح المصدر على <a href="https://github.com/murtadha203/hams">GitHub</a></footer>
-</main>
+    <div class="sig">Made by <a href="https://github.com/murtadha203/hams">Murtadha</a></div>
+  </div>
+</div>
 <script type="module" src="app.js"></script>
 </body>
 </html>
