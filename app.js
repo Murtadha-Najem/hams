@@ -1,5 +1,5 @@
-import { buildPacket, Receiver, PROFILES, profileId, airtime, bitsPerSecond } from './modem.js';
-import { frameMessage, parseFrame, receiptFrame, Assembler, seal, unseal, SEALED, randomId16, chatContent, parseChat, MAX_CONTENT } from './protocol.js';
+import { buildPacket, Receiver, PROFILES, profileId, airtime, bitsPerSecond } from './modem.js?v=8';
+import { frameMessage, parseFrame, receiptFrame, Assembler, seal, unseal, SEALED, randomId16, chatContent, parseChat, MAX_CONTENT } from './protocol.js?v=8';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -802,6 +802,7 @@ if (!myName) {
   navigator.permissions?.query({ name: 'microphone' }).then((p) => { if (p.state === 'granted') tryListen(); }).catch(() => {});
   document.addEventListener('pointerdown', async () => { if (ctx && ctx.state !== 'running') { await ctx.resume().catch(() => {}); renderState(); } }, { once: true });
 }
+window.hamsReady = true;
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
