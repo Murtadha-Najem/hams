@@ -73,6 +73,11 @@ canvas { width: 100%; height: 110px; display: block; background: var(--bg); bord
 .msg .body { white-space: pre-wrap; word-break: break-word; font-size: 17px; }
 .msg .foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--muted); flex-wrap: wrap; align-items: center; }
 .msg .foot button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 3px 10px; cursor: pointer; }
+.tablewrap { overflow-x: auto; margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; text-align: start; }
+th { background: var(--track); font-weight: 600; }
+details summary { cursor: pointer; font-size: 14px; color: var(--muted); }
 .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 18px 0 6px; }
 code, .mono { font-family: Consolas, "SF Mono", monospace; font-size: 13px; }
 dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; margin: 0; }
@@ -132,6 +137,21 @@ dl.kv dd { margin: 0; }
       <div class="lights"><span id="litU">فوق سمعي</span><span id="litA">مسموع</span></div>
       <div class="status" id="recvStatus">الاستماع متوقف.</div>
       <div class="bar"><i id="recvBar"></i></div>
+    </div>
+    <div class="card">
+      <h2>سجل التجارب <span id="logCount" class="meta"></span></h2>
+      <label class="field" for="expLabel" style="margin-top:0">وصف التجربة الحالية (ينحفظ ويا كل رسالة)</label>
+      <input type="text" id="expLabel" placeholder="مثلاً: موبايل إلى لابتوب، متر، صوت كامل">
+      <p class="note">ابدأ الاستماع قبل ما يبدي البث، حتى يكون عدد المحاولات صحيح.</p>
+      <div id="logSummary"></div>
+      <details style="margin-top:10px">
+        <summary>كل الرسائل</summary>
+        <div id="logTable"></div>
+      </details>
+      <div class="row">
+        <button class="btn ghost" id="logCsv">تنزيل CSV</button>
+        <button class="btn ghost" id="logClear">مسح السجل</button>
+      </div>
     </div>
     <div class="card">
       <h2>الرسائل المستلمة</h2>

@@ -1,5 +1,5 @@
 // Offline after the first visit: every file of the app is cached and served from the phone.
-const CACHE = 'hams-v1';
+const CACHE = 'hams-v2';
 const FILES = ['./', 'index.html', 'app.js', 'modem.js', 'codec.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', (e) => {

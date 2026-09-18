@@ -362,11 +362,13 @@ function writeSymbols(out, off, slots, S, L, fs, amp) {
   return off + S * L.Ns;
 }
 
-export function buildPacket(payload, pid, fs, { id = Math.floor(Math.random() * 256), amp = 0.9 } = {}) {
+// copy: which repeat this is (1 to 15, capped), so the receiver can tell how many attempts a
+// message took, including copies it never heard. 0 means not counted.
+export function buildPacket(payload, pid, fs, { id = Math.floor(Math.random() * 256), amp = 0.9, copy = 0 } = {}) {
   if (!payload.length || payload.length > MAX_PAYLOAD) throw new Error('payload must be 1 to 255 bytes');
   const p = PROFILES[pid];
   const LH = layout(HEADER_PROFILE[p.band], fs), LP = layout(pid, fs);
-  const hdr = [pid << 4, payload.length, id & 255];
+  const hdr = [(pid << 4) | Math.min(15, copy), payload.length, id & 255];
   hdr.push(crc8(hdr));
   const H = toSlots(convEncode(bytesToBits(hdr)), LH.bps);
   const crc = crc16(payload);
@@ -582,12 +584,12 @@ class BandRx {
       for (let s = 0; s < this.hS; s++) this.symbolLLR(job.hdrBase + d + s * L.Ns + L.R, L, s, slots, s * L.bps);
       const bytes = bitsToBytes(viterbi(fromSlots(slots, this.hCoded), HDR_BYTES * 8));
       if (crc8(bytes.subarray(0, 3)) !== bytes[3]) continue;
-      const pid = bytes[0] >> 4, len = bytes[1], id = bytes[2];
-      if ((bytes[0] & 15) || !PROFILES[pid] || PROFILES[pid].band !== this.band || len < 1) continue;
+      const pid = bytes[0] >> 4, copy = bytes[0] & 15, len = bytes[1], id = bytes[2];
+      if (!PROFILES[pid] || PROFILES[pid].band !== this.band || len < 1) continue;
       const LP = layout(pid, fs);
       const S = Math.ceil(codedLength((len + 2) * 8, LP.p.rate) / LP.bps);
       Object.assign(job, {
-        stage: 'pay', pid, len, id, S, LP,
+        stage: 'pay', pid, len, id, copy, S, LP,
         payBase: job.hdrBase + d + this.hS * L.Ns,
         need: job.hdrBase + d + this.hS * L.Ns + S * LP.Ns + Math.round(0.004 * fs) + LP.Ns,
       });
@@ -598,7 +600,7 @@ class BandRx {
   }
 
   decodePayload(job) {
-    const { LP: L, S, pid, len, id } = job;
+    const { LP: L, S, pid, len, id, copy } = job;
     const fs = this.fs;
     const unit = Math.max(1, Math.round(fs / 16000));
     const slots = new Float32Array(S * L.bps);
@@ -619,7 +621,7 @@ class BandRx {
     }
     const nbits = (len + 2) * 8;
     const llr = depuncture(fromSlots(slots, codedLength(nbits, L.p.rate)), 2 * (nbits + 6), L.p.rate);
-    this.parent.deliver({ band: this.band, pid, len, id, llr, nbits, snrDb: 10 * Math.log10(snr / S + 1e-12), rho: job.rho });
+    this.parent.deliver({ band: this.band, pid, len, id, copy, llr, nbits, snrDb: 10 * Math.log10(snr / S + 1e-12), rho: job.rho });
   }
 }
 
@@ -647,13 +649,14 @@ export class Receiver {
 
     let bytes = this.check(pk.llr, pk.nbits);
     let combined = 1;
+    let snrs = [pk.snrDb];
     const earlier = this.recent.get(key);
     if (!bytes && earlier && now - earlier.t < 300) {
       // a weak copy of something already delivered: count it, do not report a failure
       const seen = this.done.get(earlier.doneKey);
       seen.count++;
       seen.t = earlier.t = now;
-      this.onEvent({ type: 'repeat', key: earlier.doneKey, count: seen.count, snrDb: pk.snrDb });
+      this.onEvent({ type: 'repeat', key: earlier.doneKey, count: seen.count, snrDb: pk.snrDb, copy: pk.copy });
       return;
     }
     if (!bytes) {
@@ -662,14 +665,15 @@ export class Receiver {
         const sum = new Float32Array(pk.llr.length);
         for (let i = 0; i < sum.length; i++) sum[i] = prev.llr[i] + pk.llr[i];
         combined = prev.count + 1;
+        snrs = [...prev.snrs, pk.snrDb];
         bytes = this.check(sum, pk.nbits);
-        this.partial.set(key, { llr: sum, count: combined, t: now });
+        this.partial.set(key, { llr: sum, count: combined, snrs, t: now });
       } else {
-        this.partial.set(key, { llr: Float32Array.from(pk.llr), count: 1, t: now });
+        this.partial.set(key, { llr: Float32Array.from(pk.llr), count: 1, snrs, t: now });
       }
     }
     if (!bytes) {
-      this.onEvent({ type: 'failed', band: pk.band, pid: pk.pid, id: pk.id, snrDb: pk.snrDb, heard: this.partial.get(key).count });
+      this.onEvent({ type: 'failed', band: pk.band, pid: pk.pid, id: pk.id, snrDb: pk.snrDb, heard: this.partial.get(key).count, copy: pk.copy });
       return;
     }
     this.partial.delete(key);
@@ -678,12 +682,14 @@ export class Receiver {
     if (seen && now - seen.t < 300) {
       seen.count++;
       seen.t = now;
-      this.onEvent({ type: 'repeat', key: doneKey, count: seen.count, snrDb: pk.snrDb });
+      this.onEvent({ type: 'repeat', key: doneKey, count: seen.count, snrDb: pk.snrDb, copy: pk.copy });
       return;
     }
     this.done.set(doneKey, { t: now, count: 1 });
     this.recent.set(key, { doneKey, t: now });
-    this.onPacket({ bytes, band: pk.band, pid: pk.pid, id: pk.id, snrDb: pk.snrDb, combined, key: doneKey });
+    // copy: the sender's repeat number that completed it (0 if the sender does not count);
+    // combined: how many copies were added up; snrs: the signal of each of those copies
+    this.onPacket({ bytes, band: pk.band, pid: pk.pid, id: pk.id, snrDb: pk.snrDb, combined, snrs, copy: pk.copy, key: doneKey });
   }
 
   check(llr, nbits) {

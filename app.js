@@ -117,7 +117,12 @@ async function broadcast(bytes, statusEl, label) {
   await audio();
   const pid = currentPid();
   const id = newId();
-  const packet = buildPacket(bytes, pid, ctx.sampleRate, { id, amp: settings.vol });
+  const packets = new Map();
+  const packetFor = (n) => {
+    const c = Math.min(15, n);
+    if (!packets.has(c)) packets.set(c, buildPacket(bytes, pid, ctx.sampleRate, { id, amp: settings.vol, copy: c }));
+    return packets.get(c);
+  };
   transmitting = true;
   stopRequested = false;
   setSendButtons();
@@ -127,7 +132,7 @@ async function broadcast(bytes, statusEl, label) {
       n++;
       statusEl.className = 'status';
       statusEl.textContent = `يبث ${label} (${profileName(pid)})${settings.repeat ? `، المرة ${n}` : ''}`;
-      await play(packet);
+      await play(packetFor(n));
       if (settings.repeat && !stopRequested) await sleep(350);
     } while (settings.repeat && !stopRequested);
     statusEl.className = 'status ok';
@@ -269,6 +274,7 @@ function onPacket(pk) {
   const body = decoded.kind === 'text' ? decoded.text : Array.from(pk.bytes, (b) => b.toString(16).padStart(2, '0')).join(' ');
   inbox.unshift({ body, when, pk, text: decoded.kind === 'text' });
   renderInbox();
+  addLog(pk, when);
 }
 
 function renderInbox() {
@@ -285,8 +291,7 @@ function renderInbox() {
     const foot = document.createElement('div');
     foot.className = 'foot';
     const info = document.createElement('span');
-    const combo = m.pk.combined > 1 ? `، انجمعت من ${m.pk.combined} نسخ` : '';
-    info.textContent = `${m.when.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}، ${profileName(m.pk.pid)}، الإشارة ${m.pk.snrDb.toFixed(0)} dB${combo}`;
+    info.textContent = `${m.when.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}، ${profileName(m.pk.pid)}، ${attemptsText(m.pk)}، ${dbText(m.pk.snrs)}`;
     const rep = document.createElement('span');
     rep.className = 'rep';
     foot.append(info, rep);
@@ -450,6 +455,105 @@ function finishMeasure() {
   }
 }
 
+// ---------------------------------------------------------------- experiment log
+
+// attempts: the sender's repeat number that completed the message (counts copies this phone
+// missed entirely); falls back to the copies heard when the sender does not count
+const attempts = (pk) => pk.copy || pk.combined;
+function attemptsText(pk) {
+  const n = attempts(pk);
+  const s = n === 1 ? 'من أول محاولة' : `احتاجت ${n}${pk.copy === 15 ? '+' : ''} محاولات`;
+  return pk.combined > 1 ? `${s} (انجمعت ${pk.combined} نسخ)` : s;
+}
+const dbText = (snrs) => `الإشارة ${snrs.map((v) => v.toFixed(1)).join(' ثم ')} dB`;
+
+$('expLabel').value = store.get('expLabel', '');
+$('expLabel').addEventListener('input', () => store.set('expLabel', $('expLabel').value));
+
+function logRows() { return store.get('log', []); }
+
+function addLog(pk, when) {
+  const rows = logRows();
+  rows.unshift({
+    t: when.toISOString(),
+    label: $('expLabel').value.trim(),
+    pid: pk.pid,
+    bytes: pk.bytes.length,
+    attempts: attempts(pk),
+    heard: pk.combined,
+    snrs: pk.snrs.map((v) => +v.toFixed(1)),
+  });
+  store.set('log', rows);
+  renderLog();
+}
+
+const avg = (xs) => xs.reduce((s, v) => s + v, 0) / xs.length;
+
+function table(headers, rows) {
+  const t = document.createElement('table');
+  const head = t.createTHead().insertRow();
+  for (const h of headers) { const th = document.createElement('th'); th.textContent = h; head.append(th); }
+  const body = t.createTBody();
+  for (const r of rows) { const tr = body.insertRow(); for (const v of r) tr.insertCell().textContent = v; }
+  const w = document.createElement('div');
+  w.className = 'tablewrap';
+  w.append(t);
+  return w;
+}
+
+function renderLog() {
+  const rows = logRows();
+  $('logCount').textContent = rows.length ? `(${rows.length})` : '';
+  $('logSummary').textContent = '';
+  $('logTable').textContent = '';
+  if (!rows.length) { $('logSummary').innerHTML = '<div class="empty">كل رسالة تنقرا تنسجل هنا.</div>'; return; }
+
+  // one line per experiment and mode
+  const groups = new Map();
+  for (const r of rows) {
+    const k = `${r.label}|${r.pid}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(r);
+  }
+  $('logSummary').append(table(
+    ['التجربة', 'النمط', 'رسائل', 'من أول محاولة', 'متوسط المحاولات', 'متوسط الإشارة dB'],
+    [...groups.values()].map((g) => {
+      const first = g.filter((r) => r.attempts === 1).length;
+      return [g[0].label || 'بدون وصف', profileName(g[0].pid), g.length, `${first} (${Math.round((100 * first) / g.length)}%)`,
+        avg(g.map((r) => r.attempts)).toFixed(1), avg(g.map((r) => r.snrs[r.snrs.length - 1])).toFixed(1)];
+    }),
+  ));
+  $('logTable').append(table(
+    ['الوقت', 'التجربة', 'النمط', 'بايت', 'المحاولات', 'الإشارة dB'],
+    rows.map((r) => [new Date(r.t).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      r.label, profileName(r.pid), r.bytes, r.attempts + (r.heard > 1 ? ` (${r.heard} نسخ)` : ''), r.snrs.join('، ')]),
+  ));
+}
+
+$('logCsv').addEventListener('click', () => {
+  const rows = logRows();
+  if (!rows.length) return;
+  const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
+  const lines = ['time,experiment,band,speed,bytes,attempts,copies_combined,db_final,db_each'];
+  for (const r of rows) {
+    const p = PROFILES[r.pid];
+    lines.push([r.t, esc(r.label), p.band === 'U' ? 'ultrasonic' : 'audible', ['robust', 'normal', 'fast'][r.pid - HEADER_PROFILE[p.band]],
+      r.bytes, r.attempts, r.heard, r.snrs[r.snrs.length - 1], esc(r.snrs.join(' '))].join(','));
+  }
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `hams-log-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+});
+
+$('logClear').addEventListener('click', () => {
+  if (!confirm('تمسح سجل التجارب من هذا الجهاز؟')) return;
+  store.set('log', []);
+  renderLog();
+});
+
 // ---------------------------------------------------------------- software self-test
 
 $('selfTest').addEventListener('click', async () => {
@@ -491,6 +595,7 @@ $('selfTest').addEventListener('click', async () => {
 
 updateSendMeta();
 renderInbox();
+renderLog();
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
