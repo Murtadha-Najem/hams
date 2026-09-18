@@ -4,7 +4,7 @@
 // Packet on air:
 //   chirp (80 ms sweep across the band, for detection and timing; its direction names the profile)
 //   gap (15 ms)
-//   header symbols (24 bits): repeat number, length, message id, CRC-6
+//   header symbols (26 bits): length, packet id, answer-window flag, CRC-8
 //   payload symbols: payload + CRC-16
 // Header and payload use the same profile, so a normal-speed packet is not held back by a
 // robust-speed header.
@@ -44,9 +44,9 @@ export const PROFILES = [
   { id: 3, band: 'A', key: 'a-normal', speed: 1, dir: -1, h: 1, M: 4, tg: 0.008, rate: 2, hdrRep: 2 },
 ];
 export const profileId = (band, speed) => PROFILES.find((p) => p.band === band && p.speed === speed).id;
-const HDR_BITS = 26; // repeat number 4, length 8, id 6, CRC-8 8
+const HDR_BITS = 26; // length 8, packet id 9, window flag 1, CRC-8 8
 export const MAX_PAYLOAD = 255;
-export const MAX_ID = 63;
+export const MAX_ID = 511;
 
 // ---------------------------------------------------------------- small utilities
 
@@ -82,15 +82,15 @@ function crc8Bits(bits) {
 const toBits = (v, w) => Array.from({ length: w }, (_, i) => (v >> (w - 1 - i)) & 1);
 const fromBits = (bits) => bits.reduce((v, b) => (v << 1) | b, 0);
 
-function headerBits(copy, len, id) {
-  const bits = [...toBits(copy, 4), ...toBits(len, 8), ...toBits(id, 6)];
+function headerBits(len, id, w) {
+  const bits = [...toBits(len, 8), ...toBits(id, 9), w ? 1 : 0];
   return Uint8Array.from([...bits, ...toBits(crc8Bits(bits), 8)]);
 }
 
 function parseHeader(bits) {
   const b = Array.from(bits);
   if (crc8Bits(b.slice(0, 18)) !== fromBits(b.slice(18, 26))) return null;
-  return { copy: fromBits(b.slice(0, 4)), len: fromBits(b.slice(4, 12)), id: fromBits(b.slice(12, 18)) };
+  return { len: fromBits(b.slice(0, 8)), id: fromBits(b.slice(8, 17)), w: b[17] === 1 };
 }
 
 const gray = (t) => t ^ (t >> 1);
@@ -394,13 +394,13 @@ function writeSymbols(out, off, slots, S, L, fs, amp, s0 = 0) {
   return off + S * L.Ns;
 }
 
-// id: 0 to 63. copy: which repeat this is (1 to 15, capped), so the receiver can tell how many
-// attempts a message took, including copies it never heard. 0 means not counted.
-export function buildPacket(payload, pid, fs, { id = Math.floor(Math.random() * (MAX_ID + 1)), amp = 0.9, copy = 0 } = {}) {
+// id: 0 to 511, tells packets apart for combining repeats. window: the sender will fall silent and
+// listen right after this packet, so receivers that have the whole message may answer now.
+export function buildPacket(payload, pid, fs, { id = Math.floor(Math.random() * (MAX_ID + 1)), amp = 0.9, window = false } = {}) {
   if (!payload.length || payload.length > MAX_PAYLOAD) throw new Error('payload must be 1 to 255 bytes');
   const p = PROFILES[pid];
   const L = layout(pid, fs);
-  const hc = convEncode(headerBits(Math.min(15, copy), payload.length, id & MAX_ID));
+  const hc = convEncode(headerBits(payload.length, id & MAX_ID, window));
   const hdr = new Uint8Array(hc.length * p.hdrRep);
   for (let r = 0; r < p.hdrRep; r++) hdr.set(hc, r * hc.length);
   const H = toSlots(hdr, L.bps);
@@ -629,7 +629,7 @@ class BandRx {
   }
 
   decodePayload(job) {
-    const { L, S, hS, pid, len, id, copy } = job;
+    const { L, S, hS, pid, len, id, w } = job;
     const fs = this.fs;
     const unit = Math.max(1, Math.round(fs / 16000));
     const slots = new Float32Array(S * L.bps);
@@ -650,7 +650,7 @@ class BandRx {
     }
     const nbits = (len + 2) * 8;
     const llr = depuncture(fromSlots(slots, codedLength(nbits, L.p.rate)), 2 * (nbits + 6), L.p.rate);
-    this.parent.deliver({ band: this.band, pid, len, id, copy, llr, nbits, snrDb: 10 * Math.log10(snr / S + 1e-12), rho: job.rho });
+    this.parent.deliver({ band: this.band, pid, len, id, w, llr, nbits, snrDb: 10 * Math.log10(snr / S + 1e-12), rho: job.rho });
   }
 }
 
@@ -662,64 +662,53 @@ export class Receiver {
     this.ignoreIds = ignoreIds;
     this.rx = bands.filter((b) => BANDS[b].chirp[1] < fs / 2 - 300).map((b) => new BandRx(b, this));
     this.partial = new Map(); // soft values of packets that failed their CRC, waiting for a repeat
-    this.done = new Map(); // packets already delivered, so a repeat only bumps a counter
-    this.recent = new Map(); // header key of a delivered packet, for repeats too weak to decode alone
+    this.done = new Map(); // packets already delivered, by header key, so repeats are recognised
   }
 
   get bands() { return this.rx.map((r) => r.band); }
 
   push(x) { for (const r of this.rx) r.push(x); }
 
+  // Every decoded packet reaches onPacket, repeats included (repeat: true), because a repeat can
+  // carry the answer-window flag the application is waiting for.
   deliver(pk) {
     const key = `${pk.band}:${pk.pid}:${pk.len}:${pk.id}`;
     const now = this.rx[0].n / this.fs;
     for (const [k, v] of this.partial) if (now - v.t > 120) this.partial.delete(k);
+    for (const [k, v] of this.done) if (now - v.t > 300) this.done.delete(k);
     if (this.ignoreIds && this.ignoreIds.has(pk.id)) return;
+    const out = { band: pk.band, pid: pk.pid, id: pk.id, w: pk.w, snrDb: pk.snrDb };
 
     let bytes = this.check(pk.llr, pk.nbits);
-    let combined = 1;
-    let snrs = [pk.snrDb];
-    const earlier = this.recent.get(key);
-    if (!bytes && earlier && now - earlier.t < 300) {
-      // a weak copy of something already delivered: count it, do not report a failure
-      const seen = this.done.get(earlier.doneKey);
-      seen.count++;
-      seen.t = earlier.t = now;
-      this.onEvent({ type: 'repeat', key: earlier.doneKey, count: seen.count, snrDb: pk.snrDb, copy: pk.copy });
+    const earlier = this.done.get(key);
+    if (!bytes && earlier) {
+      // a copy too weak to decode alone, of a packet already delivered
+      earlier.t = now;
+      this.onPacket({ ...out, bytes: earlier.bytes, repeat: true, combined: 1 });
       return;
     }
+    let combined = 1;
     if (!bytes) {
       const prev = this.partial.get(key);
       if (prev && prev.llr.length === pk.llr.length) {
         const sum = new Float32Array(pk.llr.length);
         for (let i = 0; i < sum.length; i++) sum[i] = prev.llr[i] + pk.llr[i];
         combined = prev.count + 1;
-        snrs = [...prev.snrs, pk.snrDb];
         bytes = this.check(sum, pk.nbits);
-        this.partial.set(key, { llr: sum, count: combined, snrs, t: now });
+        this.partial.set(key, { llr: sum, count: combined, t: now });
       } else {
-        this.partial.set(key, { llr: Float32Array.from(pk.llr), count: 1, snrs, t: now });
+        this.partial.set(key, { llr: Float32Array.from(pk.llr), count: 1, t: now });
       }
     }
     if (!bytes) {
       if (pk.snrDb < 2) return; // most likely noise that passed the header check
-      this.onEvent({ type: 'failed', band: pk.band, pid: pk.pid, id: pk.id, snrDb: pk.snrDb, heard: this.partial.get(key).count, copy: pk.copy });
+      this.onEvent({ type: 'failed', band: pk.band, pid: pk.pid, id: pk.id, snrDb: pk.snrDb, heard: this.partial.get(key).count });
       return;
     }
     this.partial.delete(key);
-    const doneKey = key + ':' + crc16(bytes);
-    const seen = this.done.get(doneKey);
-    if (seen && now - seen.t < 300) {
-      seen.count++;
-      seen.t = now;
-      this.onEvent({ type: 'repeat', key: doneKey, count: seen.count, snrDb: pk.snrDb, copy: pk.copy });
-      return;
-    }
-    this.done.set(doneKey, { t: now, count: 1 });
-    this.recent.set(key, { doneKey, t: now });
-    // copy: the sender's repeat number that completed it (0 if the sender does not count);
-    // combined: how many copies were added up; snrs: the signal of each of those copies
-    this.onPacket({ bytes, band: pk.band, pid: pk.pid, id: pk.id, snrDb: pk.snrDb, combined, snrs, copy: pk.copy, key: doneKey });
+    const repeat = !!earlier;
+    this.done.set(key, { bytes, t: now });
+    this.onPacket({ ...out, bytes, repeat, combined });
   }
 
   check(llr, nbits) {

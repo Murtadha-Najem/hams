@@ -2,8 +2,9 @@
   "name": "hams",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "scripts": {
-    "test": "node test/codec.mjs && node test/sim.mjs quick",
+    "test": "node test/codec.mjs && node test/protocol.mjs && node test/flow.mjs && node test/sim.mjs quick",
     "sim": "node test/sim.mjs"
   }
 }

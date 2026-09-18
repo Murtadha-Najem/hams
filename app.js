@@ -1,25 +1,57 @@
-import { buildPacket, Receiver, PROFILES, profileId, airtime, MAX_PAYLOAD, MAX_ID, bitsPerSecond } from './modem.js';
-import { encodeText, decodePayload, textEncodingName } from './codec.js';
+import { buildPacket, Receiver, PROFILES, profileId, airtime, bitsPerSecond } from './modem.js';
+import { encodeText, decodePayload } from './codec.js';
+import { frameMessage, parseFrame, receiptFrame, Assembler, seal, unseal, SEALED, MAX_CONTENT, randomId16 } from './protocol.js';
 
 const $ = (id) => document.getElementById(id);
 const store = {
   get(k, d) { try { const v = localStorage.getItem('hams.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } },
-  set(k, v) { try { localStorage.setItem('hams.' + k, JSON.stringify(v)); } catch { /* private mode: settings just do not persist */ } },
+  set(k, v) { try { localStorage.setItem('hams.' + k, JSON.stringify(v)); } catch { /* private mode: nothing persists */ } },
 };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const SPEED_NAMES = ['متين', 'عادي'];
 const BAND_NAMES = { U: 'فوق سمعي', A: 'مسموع' };
 const profileName = (pid) => `${BAND_NAMES[PROFILES[pid].band]}، ${SPEED_NAMES[PROFILES[pid].speed]}`;
 
+// Receipt timing. After the last part of each round the sender falls silent for RECEIPT_SLOTS
+// slots; each receiver that can read the message answers in one slot picked at random, so a
+// few receivers rarely collide, and a collision is simply retried on the next round.
+const RECEIPT_SLOTS = 3;
+const RECEIPT_BYTES = 17;
+const slotSeconds = (pid) => airtime(RECEIPT_BYTES, pid) + 0.15;
+const MAX_ROUNDS = 30;
+
+// Packet ids: this device's message packets use 0 to 447, receipts 448 to 511, so a receipt from
+// someone else never shares an id with the packets being sent and is never mistaken for an echo.
+const ownIds = new Set();
+function newId(receipt = false) {
+  let id;
+  do id = receipt ? 448 + Math.floor(Math.random() * 64) : Math.floor(Math.random() * 448); while (ownIds.has(id));
+  ownIds.add(id);
+  return id;
+}
+const releaseIds = (ids) => setTimeout(() => ids.forEach((i) => ownIds.delete(i)), 30000);
+
+// ---------------------------------------------------------------- saved state
+
+const settings = { band: 'U', speed: 1, vol: 0.9, need: 1, receipts: true, ...store.get('settings', {}) };
+if (!(settings.speed in SPEED_NAMES)) settings.speed = 1;
+const saveSettings = () => store.set('settings', settings);
+const currentPid = () => profileId(settings.band, settings.speed);
+
+let deviceId = store.get('device', null);
+if (deviceId === null) { deviceId = randomId16(); store.set('device', deviceId); }
+let codes = store.get('codes', []); // [{ label, secret }]
+
 // ---------------------------------------------------------------- tabs
 
 document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
 function showTab(name) {
-  document.querySelectorAll('nav button').forEach((b) => b.setAttribute('aria-selected', b.dataset.tab === name));
+  document.querySelectorAll('nav button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   document.querySelectorAll('section[role="tabpanel"]').forEach((s) => s.classList.toggle('on', s.id === name));
+  if (name === 'inbox') { unread = 0; renderBadge(); }
   store.set('tab', name);
 }
-showTab(['send', 'recv', 'test'].includes(store.get('tab')) ? store.get('tab') : 'send');
 
 // ---------------------------------------------------------------- audio
 
@@ -43,133 +75,16 @@ function play(samples) {
     src.start();
   });
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ids this phone sent recently, so it does not "receive" its own broadcast
-const ownIds = new Set();
-function newId() {
-  let id;
-  do id = Math.floor(Math.random() * (MAX_ID + 1)); while (ownIds.has(id));
-  ownIds.add(id);
-  setTimeout(() => ownIds.delete(id), 60000);
-  return id;
-}
-
-// ---------------------------------------------------------------- send settings
-
-const settings = { band: 'U', speed: 1, vol: 0.9, repeat: true, ...store.get('settings', {}) };
-if (!(settings.speed in SPEED_NAMES)) settings.speed = 1; // the fast mode no longer exists
-const currentPid = () => profileId(settings.band, settings.speed);
-
-function bindSeg(el, key, parse) {
-  const sync = () => el.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(parse(b.dataset.v) === settings[key])));
-  el.addEventListener('click', (e) => {
-    const b = e.target.closest('button');
-    if (!b) return;
-    settings[key] = parse(b.dataset.v);
-    store.set('settings', settings);
-    sync();
-    updateSendMeta();
-  });
-  sync();
-}
-bindSeg($('bandSeg'), 'band', String);
-bindSeg($('speedSeg'), 'speed', Number);
-$('vol').value = settings.vol;
-$('repeat').checked = settings.repeat;
-$('vol').addEventListener('input', () => { settings.vol = +$('vol').value; store.set('settings', settings); });
-$('repeat').addEventListener('change', () => { settings.repeat = $('repeat').checked; store.set('settings', settings); });
-
-const NOTES = {
-  U: 'ما ينسمع عند أغلب البالغين. يحتاج الموبايلين قريبين (لحد 2 إلى 3 متر) والسماعة مواجهة للمايك. بعض الموبايلات والابتوبات ما تلتقطه، جرّب صفحة الفحص.',
-  A: 'ينسمع كصفير متقطع. أوثق من فوق السمعي ويشتغل على الابتوب، بس الحچي والضوضاء بالغرفة تأثر عليه.',
-};
-
-$('msg').value = store.get('draft', '');
-$('msg').addEventListener('input', () => { store.set('draft', $('msg').value); updateSendMeta(); });
-
-function describe(bytes, pid) {
-  const t = airtime(bytes.length, pid);
-  return `${bytes.length} بايت، مدة البث ${t.toFixed(1)} ثانية`;
-}
-
-function updateSendMeta() {
-  const pid = currentPid();
-  $('modeNote').textContent = `${NOTES[settings.band]} السرعة الصافية حوالي ${Math.round(bitsPerSecond(pid) / 8)} بايت بالثانية.`;
-  const text = $('msg').value;
-  const meta = $('msgMeta');
-  if (!text) { meta.textContent = ''; meta.classList.remove('bad'); $('sendBtn').disabled = !transmitting; return; }
-  const bytes = encodeText(text);
-  const over = bytes.length > MAX_PAYLOAD;
-  meta.classList.toggle('bad', over);
-  meta.textContent = over
-    ? `طويلة: ${bytes.length} بايت بعد الضغط، والحد ${MAX_PAYLOAD}.`
-    : `${describe(bytes, pid)} (${textEncodingName(bytes)}، النص الأصلي ${new TextEncoder().encode(text).length} بايت)`;
-  $('sendBtn').disabled = over && !transmitting;
-}
-
-// ---------------------------------------------------------------- transmit
-
-let transmitting = false;
-let stopRequested = false;
-
-async function broadcast(bytes, statusEl, label) {
-  if (transmitting) { stopBroadcast(); return; }
-  await audio();
-  const pid = currentPid();
-  const id = newId();
-  const packets = new Map();
-  const packetFor = (n) => {
-    const c = Math.min(15, n);
-    if (!packets.has(c)) packets.set(c, buildPacket(bytes, pid, ctx.sampleRate, { id, amp: settings.vol, copy: c }));
-    return packets.get(c);
-  };
-  transmitting = true;
-  stopRequested = false;
-  setSendButtons();
-  let n = 0;
-  try {
-    do {
-      n++;
-      statusEl.className = 'status';
-      statusEl.textContent = `يبث ${label} (${profileName(pid)})${settings.repeat ? `، المرة ${n}` : ''}`;
-      await play(packetFor(n));
-      if (settings.repeat && !stopRequested) await sleep(350);
-    } while (settings.repeat && !stopRequested);
-    statusEl.className = 'status ok';
-    statusEl.textContent = `انتهى البث: ${n} ${n === 1 ? 'مرة' : 'مرات'}.`;
-  } finally {
-    transmitting = false;
-    setSendButtons();
-  }
-}
-
-function stopBroadcast() {
-  stopRequested = true;
-  if (playing) try { playing.stop(); } catch { /* already ended */ }
-}
-
-function setSendButtons() {
-  const b = $('sendBtn');
-  b.textContent = transmitting ? 'إيقاف البث' : 'إرسال';
-  b.classList.toggle('stop', transmitting);
-  updateSendMeta();
-}
-
-$('sendBtn').addEventListener('click', () => {
-  const text = $('msg').value;
-  if (!text && !transmitting) { $('sendStatus').className = 'status warn'; $('sendStatus').textContent = 'اكتب رسالة أولاً.'; return; }
-  broadcast(transmitting ? null : encodeText(text), $('sendStatus'), 'الرسالة');
-});
-
-// ---------------------------------------------------------------- receive
+// ---------------------------------------------------------------- listening
 
 let listening = null;
 let wakeLock = null;
 
 async function startListening() {
+  if (listening) return listening;
   await audio();
-  if (!navigator.mediaDevices?.getUserMedia) throw new Error('المتصفح ما يسمح بالمايك هنا. افتح الصفحة عبر https أو localhost.');
+  if (!navigator.mediaDevices?.getUserMedia) throw new Error('المتصفح ما يسمح بالمايك هنا. افتح الصفحة عبر https.');
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 },
   });
@@ -186,15 +101,15 @@ async function startListening() {
   src.connect(proc);
   proc.connect(mute);
   mute.connect(ctx.destination);
-
   const rx = new Receiver(ctx.sampleRate, { onPacket, onEvent: onRxEvent, ignoreIds: ownIds });
-  // decoding runs off the audio callback, so a slow Viterbi never drops microphone samples
+  // decoding runs off the audio callback, so a slow decode never drops microphone samples
   const pump = setInterval(() => {
     let budget = 8;
     while (queue.length && budget--) rx.push(queue.shift());
   }, 30);
   listening = { stream, src, proc, analyser, rx, pump, track: stream.getAudioTracks()[0] };
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { wakeLock = null; }
+  renderListening();
   showDeviceInfo();
   drawSpectrum();
   return listening;
@@ -209,25 +124,24 @@ function stopListening() {
   listening = null;
   try { wakeLock?.release(); } catch { /* ignore */ }
   wakeLock = null;
+  renderListening();
 }
 
+function renderListening() {
+  $('live').classList.toggle('on', !!listening);
+  $('live').textContent = listening ? 'يستمع' : 'ما يستمع';
+  $('listenBtn').textContent = listening ? 'أوقف الاستماع' : 'ابدأ الاستماع';
+  $('listenBtn').classList.toggle('stop', !!listening);
+  if (!listening) setRecvStatus('الاستماع متوقف.');
+  else if (!listening.rx.bands.includes('U')) setRecvStatus('معدل العينات بهذا الجهاز واطي، فيلتقط المسموع بس.', 'warn');
+  else setRecvStatus('يستمع. أي رسالة توصل تظهر هنا.');
+}
+
+const micError = (e) => (e.name === 'NotAllowedError' ? 'رفض المتصفح الوصول للمايك.' : e.message);
+
 $('listenBtn').addEventListener('click', async () => {
-  if (listening) {
-    stopListening();
-    $('listenBtn').textContent = 'ابدأ الاستماع';
-    $('listenBtn').classList.remove('stop');
-    setRecvStatus('الاستماع متوقف.');
-    return;
-  }
-  try {
-    await startListening();
-    $('listenBtn').textContent = 'أوقف الاستماع';
-    $('listenBtn').classList.add('stop');
-    setRecvStatus(`يستمع على ${listening.rx.bands.map((b) => BAND_NAMES[b]).join(' و')}.`);
-    if (!listening.rx.bands.includes('U')) setRecvStatus('معدل العينات بهذا الجهاز واطي، فالاستلام على المسموع بس.', 'warn');
-  } catch (e) {
-    setRecvStatus(e.name === 'NotAllowedError' ? 'رفض المتصفح الوصول للمايك.' : e.message, 'bad');
-  }
+  if (listening) { stopListening(); return; }
+  try { await startListening(); } catch (e) { setRecvStatus(micError(e), 'bad'); }
 });
 
 function setRecvStatus(text, cls = '') {
@@ -235,87 +149,352 @@ function setRecvStatus(text, cls = '') {
   $('recvStatus').textContent = text;
 }
 
-let barTimer = null;
-function progress(seconds) {
-  const bar = $('recvBar');
-  clearInterval(barTimer);
+const barTimers = new Map();
+function progressBar(el, seconds) {
+  clearInterval(barTimers.get(el));
   const t0 = performance.now();
-  bar.style.width = '0';
-  barTimer = setInterval(() => {
+  el.style.width = '0';
+  const t = setInterval(() => {
     const f = Math.min(1, (performance.now() - t0) / 1000 / Math.max(seconds, 0.1));
-    bar.style.width = (f * 100).toFixed(1) + '%';
-    if (f >= 1) clearInterval(barTimer);
+    el.style.width = (f * 100).toFixed(1) + '%';
+    if (f >= 1) clearInterval(t);
   }, 100);
+  barTimers.set(el, t);
 }
 
 function onRxEvent(e) {
   if (e.type === 'incoming') {
     if (ownIds.has(e.id)) return;
-    setRecvStatus(`يستلم ${e.len} بايت (${profileName(e.pid)})...`);
-    progress(e.seconds);
-  } else if (e.type === 'failed') {
-    if (ownIds.has(e.id)) return;
+    // something is arriving: a sender waiting for receipts keeps listening until it is decoded
+    if (sending) sending.busyUntil = Math.max(sending.busyUntil, Date.now() + e.seconds * 1000 + 400);
+    progressBar($('recvBar'), e.seconds);
+  } else if (e.type === 'failed' && !ownIds.has(e.id)) {
     $('recvBar').style.width = '0';
-    setRecvStatus(`وصلت الرسالة بس ما انفكت (الإشارة ${e.snrDb.toFixed(0)} dB). ${e.heard > 1 ? `جمعت ${e.heard} نسخ لحد الآن، ` : ''}ننتظر التكرار الجاي.`, 'warn');
-  } else if (e.type === 'repeat') {
-    const el = document.querySelector(`[data-key="${e.key}"] .rep`);
-    if (el) el.textContent = `سُمعت ${e.count} مرات`;
-    $('recvBar').style.width = '0';
+    setRecvStatus('وصلت إشارة بس ما انفكت بعد. تنجمع ويا التكرار الجاي.', 'warn');
   }
 }
 
-const inbox = [];
+// ---------------------------------------------------------------- receiving messages
+
+const assembler = new Assembler();
+const ownMsgIds = new Set();
+const seen = new Map(); // msgId -> { state: 'opening' | 'readable' | 'foreign', lastReceipt, card }
+const messages = [];
+let unread = 0;
+
 function onPacket(pk) {
-  $('recvBar').style.width = '100%';
-  setTimeout(() => ($('recvBar').style.width = '0'), 600);
-  const decoded = decodePayload(pk.bytes);
-  const when = new Date();
-  setRecvStatus(`وصلت رسالة (${pk.bytes.length} بايت).`, 'ok');
-  if (navigator.vibrate) try { navigator.vibrate(80); } catch { /* ignore */ }
-  const body = decoded.kind === 'text' ? decoded.text : Array.from(pk.bytes, (b) => b.toString(16).padStart(2, '0')).join(' ');
-  inbox.unshift({ body, when, pk, text: decoded.kind === 'text' });
-  renderInbox();
-  addLog(pk, when);
+  const f = parseFrame(pk.bytes);
+  if (!f) return;
+  if (f.kind === 'receipt') { onReceipt(f); return; }
+  if (ownMsgIds.has(f.msgId)) return;
+  const st = assembler.add(f);
+  if (!st.complete) {
+    setRecvStatus(`يستلم رسالة طويلة: ${st.got} من ${st.total} أجزاء.`);
+    $('recvBar').style.width = `${(100 * st.got) / st.total}%`;
+    return;
+  }
+  if (st.fresh) openMessage(f.msgId, st.content, pk);
+  if (pk.w) answerWindow(f.msgId, pk.pid);
 }
 
-function renderInbox() {
-  const box = $('inbox');
+async function openMessage(msgId, content, pk) {
+  const s = { state: 'opening', lastReceipt: 0 };
+  seen.set(msgId, s);
+  let code = null;
+  if (content[0] === SEALED) {
+    const r = await unseal(content, codes.map((c) => c.secret));
+    if (!r) { s.state = 'foreign'; return; } // not for us: ignore without a trace
+    content = r.content;
+    code = codes.find((c) => c.secret === r.secret)?.label || 'رمز';
+  }
+  s.state = 'readable';
+  const d = decodePayload(content);
+  const text = d.kind === 'text' ? d.text : Array.from(content, (b) => b.toString(16).padStart(2, '0')).join(' ');
+  const m = { msgId, text, when: new Date(), pid: pk.pid, code, receipted: false };
+  messages.unshift(m);
+  s.message = m;
+  setRecvStatus('وصلت رسالة.', 'ok');
+  $('recvBar').style.width = '0';
+  if (navigator.vibrate) try { navigator.vibrate(80); } catch { /* ignore */ }
+  if (!$('inbox').classList.contains('on')) { unread++; renderBadge(); }
+  renderMessages();
+  if (pk.w) answerWindow(msgId, pk.pid);
+}
+
+// The packet just decoded was the last of a round: its sender is now listening for receipts.
+async function answerWindow(msgId, pid) {
+  const s = seen.get(msgId);
+  if (!settings.receipts || !s || s.state !== 'readable' || sending) return;
+  if (Date.now() - s.lastReceipt < 2500) return;
+  s.lastReceipt = Date.now();
+  const slot = Math.floor(Math.random() * RECEIPT_SLOTS);
+  await sleep(50 + slot * slotSeconds(pid) * 1000);
+  if (sending) return;
+  const id = newId(true);
+  await play(buildPacket(receiptFrame(msgId, deviceId, $('myName').value.trim()), pid, ctx.sampleRate, { id, amp: settings.vol }));
+  releaseIds([id]);
+  if (s.message && !s.message.receipted) { s.message.receipted = true; renderMessages(); }
+}
+
+function renderBadge() {
+  $('badge').textContent = unread;
+  $('badge').classList.toggle('on', unread > 0);
+}
+
+function renderMessages() {
+  const box = $('messages');
   box.textContent = '';
-  if (!inbox.length) { box.innerHTML = '<div class="empty">ماكو رسائل بعد.</div>'; return; }
-  for (const m of inbox) {
+  if (!messages.length) { box.innerHTML = '<div class="empty">ماكو رسائل بعد.</div>'; return; }
+  for (const m of messages) {
     const d = document.createElement('div');
     d.className = 'msg';
-    d.dataset.key = m.pk.key;
     const body = document.createElement('div');
     body.className = 'body';
-    body.textContent = m.body;
+    body.textContent = m.text;
     const foot = document.createElement('div');
     foot.className = 'foot';
+    if (m.code) { const c = document.createElement('span'); c.className = 'chip lock'; c.textContent = `محمية: ${m.code}`; foot.append(c); }
     const info = document.createElement('span');
-    info.textContent = `${m.when.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}، ${profileName(m.pk.pid)}، ${attemptsText(m.pk)}، ${dbText(m.pk.snrs)}`;
-    const rep = document.createElement('span');
-    rep.className = 'rep';
-    foot.append(info, rep);
-    if (m.text) {
-      const copy = document.createElement('button');
-      copy.textContent = 'نسخ';
-      copy.addEventListener('click', async () => {
-        try { await navigator.clipboard.writeText(m.body); copy.textContent = 'انّسخت'; } catch { copy.textContent = 'ما انّسخت'; }
-      });
-      foot.append(copy);
-    }
+    info.textContent = `${m.when.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}، ${profileName(m.pid)}${m.receipted ? '، انبعث تأكيد الاستلام' : ''}`;
+    const sp = document.createElement('span');
+    sp.className = 'sp';
+    const copy = document.createElement('button');
+    copy.textContent = 'نسخ';
+    copy.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(m.text); copy.textContent = 'انّسخت'; } catch { copy.textContent = 'ما انّسخت'; }
+    });
+    foot.append(info, sp, copy);
     d.append(body, foot);
     box.append(d);
   }
 }
 
-// live spectrum plus a light per band when a packet preamble is heard
+// ---------------------------------------------------------------- sending
+
+let sending = null;
+
+function bindSeg(el, get, set) {
+  const sync = () => el.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === String(get()))));
+  el.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    set(b.dataset.v);
+    sync();
+    renderSendForm();
+  });
+  sync();
+}
+
+let privacy = 'public';
+bindSeg($('privSeg'), () => privacy, (v) => { privacy = v; });
+bindSeg($('bandSeg'), () => settings.band, (v) => { settings.band = v; saveSettings(); });
+bindSeg($('speedSeg'), () => settings.speed, (v) => { settings.speed = +v; saveSettings(); });
+$('vol').value = settings.vol;
+$('vol').addEventListener('input', () => { settings.vol = +$('vol').value; saveSettings(); });
+$('needPlus').addEventListener('click', () => { settings.need = Math.min(9, settings.need + 1); saveSettings(); renderSendForm(); });
+$('needMinus').addEventListener('click', () => { settings.need = Math.max(0, settings.need - 1); saveSettings(); renderSendForm(); });
+$('msg').value = store.get('draft', '');
+$('msg').addEventListener('input', () => { store.set('draft', $('msg').value); renderSendForm(); });
+$('codePick').addEventListener('change', renderSendForm);
+
+const NOTES = {
+  U: 'ما ينسمع عند أغلب البالغين. يحتاج الجهازين بنفس الغرفة، والسماعة مواجهة للمايك.',
+  A: 'ينسمع كصفير متقطع. أوثق على الأجهزة الضعيفة، بس الحچي والضوضاء تأثر عليه.',
+};
+
+function roundSeconds(bytes, pid) {
+  const parts = Math.max(1, Math.ceil(bytes / (bytes <= 252 ? 252 : 120)));
+  const per = bytes <= 252 ? bytes + 3 : 125;
+  return { parts, seconds: parts * airtime(per, pid) + (parts - 1) * 0.12 };
+}
+
+function renderSendForm() {
+  const pid = currentPid();
+  $('needOut').textContent = settings.need;
+  $('needText').textContent = settings.need === 0
+    ? 'بدون تأكيد: يكرر البث لحد ما توقفه.'
+    : `يوقف لما ${settings.need === 1 ? 'جهاز واحد يأكد' : `${settings.need} أجهزة تأكد`} الاستلام.`;
+  $('modeNote').textContent = `${NOTES[settings.band]} السرعة حوالي ${Math.round(bitsPerSecond(pid) / 8)} بايت بالثانية.`;
+  $('howSummary').textContent = profileName(pid);
+
+  const sealed = privacy === 'sealed';
+  $('sealBox').hidden = !sealed;
+  const pick = $('codePick');
+  const chosen = pick.value;
+  pick.textContent = '';
+  for (const c of codes) { const o = document.createElement('option'); o.value = c.label; o.textContent = c.label; pick.append(o); }
+  if (codes.some((c) => c.label === chosen)) pick.value = chosen;
+  $('sealNote').textContent = codes.length
+    ? 'تنشفر الرسالة، وبس الأجهزة اللي عندها نفس الرمز تگدر تقراها. البقية يتجاهلونها.'
+    : 'ماكو رموز محفوظة. أضف رمز من الإعدادات، ونفس الرمز لازم يكون عند المستلم.';
+
+  const text = $('msg').value;
+  const meta = $('msgMeta');
+  meta.classList.remove('bad');
+  $('sendBtn').disabled = false;
+  if (sending) return;
+  if (!text) { meta.textContent = ''; return; }
+  const bytes = encodeText(text).length + (sealed ? 18 : 0);
+  if (bytes > MAX_CONTENT) {
+    meta.classList.add('bad');
+    meta.textContent = `طويلة: ${bytes} بايت بعد الضغط، والحد ${MAX_CONTENT}.`;
+    $('sendBtn').disabled = true;
+    return;
+  }
+  const r = roundSeconds(bytes, pid);
+  meta.textContent = `${bytes} بايت${r.parts > 1 ? `، ${r.parts} أجزاء` : ''}، البث مرة وحدة ياخذ ${r.seconds.toFixed(1)} ثانية`;
+  if (sealed && !codes.length) $('sendBtn').disabled = true;
+}
+
+function setSendStatus(text, cls = '') {
+  $('sendStatus').className = 'status ' + cls;
+  $('sendStatus').textContent = text;
+}
+
+function renderReceipts(receipts = sending?.receipts) {
+  const box = $('receipts');
+  box.textContent = '';
+  if (!receipts) return;
+  for (const [dev, name] of receipts) {
+    const c = document.createElement('span');
+    c.className = 'chip';
+    c.textContent = `وصلت: ${name || 'جهاز ' + dev}`;
+    box.append(c);
+  }
+}
+
+function onReceipt(f) {
+  if (!sending || f.msgId !== sending.msgId || f.deviceId === deviceId) return;
+  if (!sending.receipts.has(f.deviceId)) {
+    sending.receipts.set(f.deviceId, f.name);
+    renderReceipts();
+  }
+}
+
+$('sendBtn').addEventListener('click', async () => {
+  if (sending) { sending.stop = true; if (playing) try { playing.stop(); } catch { /* ended */ } return; }
+  const text = $('msg').value;
+  if (!text) { $('sendPanel').classList.add('on'); setSendStatus('اكتب رسالة أولاً.', 'warn'); return; }
+  try { await send(text); } catch (e) { setSendStatus(e.message, 'bad'); sending = null; renderSendButton(); }
+});
+
+function renderSendButton() {
+  $('sendBtn').textContent = sending ? 'إيقاف البث' : 'إرسال';
+  $('sendBtn').classList.toggle('stop', !!sending);
+  renderSendForm();
+}
+
+async function send(text) {
+  await audio();
+  const pid = currentPid();
+  let content = encodeText(text);
+  if (privacy === 'sealed') {
+    const c = codes.find((x) => x.label === $('codePick').value);
+    if (!c) throw new Error('اختار رمز للرسالة المحمية.');
+    content = await seal(content, c.secret);
+  }
+  const need = settings.need;
+  $('sendPanel').classList.add('on');
+  if (need > 0) {
+    try { await startListening(); } catch (e) { throw new Error(`تأكيد الاستلام يحتاج المايك: ${micError(e)}`); }
+  }
+  const { msgId, frames } = frameMessage(content);
+  ownMsgIds.add(msgId);
+  const ids = frames.map(() => newId());
+  const packets = frames.map((f, i) => buildPacket(f, pid, ctx.sampleRate, { id: ids[i], amp: settings.vol, window: need > 0 && i === frames.length - 1 }));
+  sending = { msgId, need, receipts: new Map(), stop: false, busyUntil: 0 };
+  renderSendButton();
+  renderReceipts();
+  const windowMs = (RECEIPT_SLOTS * slotSeconds(pid) + 1.0) * 1000;
+  let round = 0;
+  try {
+    while (!sending.stop && round < (need > 0 ? MAX_ROUNDS : Infinity)) {
+      round++;
+      for (let i = 0; i < packets.length && !sending.stop; i++) {
+        setSendStatus(`يبث${packets.length > 1 ? ` الجزء ${i + 1} من ${packets.length}` : ''}، الجولة ${round}`);
+        progressBar($('sendBar'), packets[i].length / ctx.sampleRate);
+        await play(packets[i]);
+        if (i < packets.length - 1) await sleep(120);
+      }
+      if (sending.stop) break;
+      if (need > 0) {
+        setSendStatus(`ينتظر تأكيد الاستلام (${sending.receipts.size} من ${need})`);
+        $('sendBar').style.width = '0';
+        const until = Date.now() + windowMs;
+        while (!sending.stop && sending.receipts.size < need && Date.now() < Math.max(until, sending.busyUntil)) await sleep(100);
+        if (sending.receipts.size >= need) break;
+      } else {
+        await sleep(400);
+      }
+    }
+    const got = sending.receipts.size;
+    if (need > 0 && got >= need) setSendStatus(`وصلت. أكد الاستلام ${got === 1 ? 'جهاز واحد' : `${got} أجهزة`}، والبث توقف.`, 'ok');
+    else if (need > 0 && !sending.stop) setSendStatus(`توقف البث بعد ${round} جولة، وأكد الاستلام ${got} من ${need}.`, 'warn');
+    else setSendStatus(`توقف البث بعد ${round} ${round === 1 ? 'جولة' : 'جولات'}${need > 0 ? `، وأكد الاستلام ${got} من ${need}` : ''}.`);
+  } finally {
+    $('sendBar').style.width = '0';
+    releaseIds(ids);
+    setTimeout(() => ownMsgIds.delete(msgId), 10 * 60 * 1000);
+    const { receipts } = sending;
+    sending = null;
+    renderSendButton();
+    renderReceipts(receipts); // keep the names on screen after the broadcast ends
+  }
+}
+
+// ---------------------------------------------------------------- settings
+
+$('devNum').textContent = deviceId;
+$('myName').value = store.get('name', '');
+$('myName').addEventListener('input', () => store.set('name', $('myName').value));
+$('autoReceipt').checked = settings.receipts;
+$('autoReceipt').addEventListener('change', () => { settings.receipts = $('autoReceipt').checked; saveSettings(); });
+
+function renderCodes() {
+  const box = $('codeList');
+  box.textContent = '';
+  codes.forEach((c, i) => {
+    const d = document.createElement('div');
+    d.className = 'code';
+    const b = document.createElement('b'); b.textContent = c.label;
+    const s = document.createElement('span'); s.textContent = '•'.repeat(Math.min(8, c.secret.length));
+    const sp = document.createElement('span'); sp.className = 'sp';
+    const del = document.createElement('button'); del.textContent = 'حذف';
+    del.addEventListener('click', () => {
+      if (!confirm(`تحذف الرمز "${c.label}"؟ الرسائل المحمية بي ما راح تنفك بعدها على هذا الجهاز.`)) return;
+      codes.splice(i, 1);
+      store.set('codes', codes);
+      renderCodes();
+      renderSendForm();
+    });
+    d.append(b, s, sp, del);
+    box.append(d);
+  });
+}
+
+$('codeAdd').addEventListener('click', () => {
+  const label = $('codeLabel').value.trim(), secret = $('codeSecret').value;
+  const meta = $('codeMeta');
+  meta.classList.remove('bad');
+  if (!label || !secret) { meta.classList.add('bad'); meta.textContent = 'اكتب اسم للرمز والرمز نفسه.'; return; }
+  if (codes.some((c) => c.label === label)) { meta.classList.add('bad'); meta.textContent = 'اكو رمز بنفس الاسم.'; return; }
+  codes.push({ label, secret });
+  store.set('codes', codes);
+  $('codeLabel').value = '';
+  $('codeSecret').value = '';
+  meta.textContent = secret.length < 8 ? 'انضاف. نصيحة: الرمز الأطول من 8 حروف أصعب على التخمين.' : 'انضاف.';
+  renderCodes();
+  renderSendForm();
+});
+
+// ---------------------------------------------------------------- spectrum, sweep test, device info
+
 function drawSpectrum() {
   const c = $('spec'), g = c.getContext('2d');
   const sc = $('sweepSpec'), sg = sc.getContext('2d');
-  const css = getComputedStyle(document.documentElement);
   const tick = () => {
     if (!listening) return;
+    const css = getComputedStyle(document.documentElement);
     const a = listening.analyser;
     const data = new Float32Array(a.frequencyBinCount);
     a.getFloatFrequencyData(data);
@@ -323,9 +502,6 @@ function drawSpectrum() {
     paint(g, c, data, 0, 22050, nyq, css);
     paint(sg, sc, data, 14000, 22000, nyq, css, measure);
     if (measure) measureTick(data, nyq);
-    const lv = listening.rx.levels();
-    $('litU').classList.toggle('hot', (lv.U || 0) > 0.2);
-    $('litA').classList.toggle('hot', (lv.A || 0) > 0.2);
     requestAnimationFrame(tick);
   };
   requestAnimationFrame(tick);
@@ -334,15 +510,15 @@ function drawSpectrum() {
 function paint(g, c, data, fLo, fHi, nyq, css, m = null) {
   const W = c.width, H = c.height;
   g.clearRect(0, 0, W, H);
-  const X =(f) => ((f - fLo) / (fHi - fLo)) * W;
-  g.fillStyle = css.getPropertyValue('--soft');
+  const X = (f) => ((f - fLo) / (fHi - fLo)) * W;
+  g.fillStyle = css.getPropertyValue('--accent-soft');
   for (const [a, b] of [[18000, 19800], [2000, 4000]]) if (b > fLo && a < fHi) g.fillRect(X(Math.max(a, fLo)), 0, X(Math.min(b, fHi)) - X(Math.max(a, fLo)), H);
   const binHz = nyq / data.length;
   const y = (db) => H - Math.max(0, Math.min(1, (db + 120) / 100)) * H;
   if (m) {
     g.strokeStyle = css.getPropertyValue('--warn');
     g.beginPath();
-    m.peak.forEach((db, i) => { const f = m.f0 + i * m.step; if (f <= fHi) { g.lineTo(X(f), y(db)); } });
+    m.peak.forEach((db, i) => { const f = m.f0 + i * m.step; if (f <= fHi) g.lineTo(X(f), y(db)); });
     g.stroke();
   }
   g.strokeStyle = css.getPropertyValue('--accent');
@@ -377,8 +553,6 @@ function showDeviceInfo() {
   }
 }
 
-// ---------------------------------------------------------------- frequency sweep test
-
 let measure = null;
 const SWEEP = { f0: 15000, f1: 21500, step: 250, tone: 0.12 };
 
@@ -390,10 +564,7 @@ $('sweepBtn').addEventListener('click', async () => {
   for (let f = SWEEP.f0; f <= Math.min(SWEEP.f1, fs / 2 - 200); f += SWEEP.step) freqs.push(f);
   const out = new Float32Array(freqs.length * n);
   freqs.forEach((f, k) => {
-    for (let i = 0; i < n; i++) {
-      const env = Math.min(1, i / r, (n - 1 - i) / r);
-      out[k * n + i] = settings.vol * env * Math.sin((2 * Math.PI * f * i) / fs);
-    }
+    for (let i = 0; i < n; i++) out[k * n + i] = settings.vol * Math.min(1, i / r, (n - 1 - i) / r) * Math.sin((2 * Math.PI * f * i) / fs);
   });
   $('measureStatus').className = 'status';
   $('measureStatus').textContent = 'يشغّل المسح...';
@@ -402,13 +573,7 @@ $('sweepBtn').addEventListener('click', async () => {
 });
 
 $('measureBtn').addEventListener('click', async () => {
-  try {
-    if (!listening) {
-      await startListening();
-      $('listenBtn').textContent = 'أوقف الاستماع';
-      $('listenBtn').classList.add('stop');
-    }
-  } catch (e) { $('measureStatus').className = 'status bad'; $('measureStatus').textContent = e.message; return; }
+  try { await startListening(); } catch (e) { $('measureStatus').className = 'status bad'; $('measureStatus').textContent = micError(e); return; }
   const bins = Math.floor((SWEEP.f1 - SWEEP.f0) / SWEEP.step) + 1;
   measure = { f0: SWEEP.f0, step: SWEEP.step, peak: new Array(bins).fill(-140), floor: new Array(bins).fill(0), nFloor: 0, t0: performance.now() };
   $('measureStatus').className = 'status';
@@ -435,125 +600,26 @@ function finishMeasure() {
   const m = measure;
   measure = null;
   const floor = m.floor.map((v) => v / Math.max(1, m.nFloor));
-  let top = null, clear18 = 0, clear19 = 0;
+  let top = null, inBand = 0, clear = 0;
   m.peak.forEach((p, i) => {
     const f = m.f0 + i * m.step;
     const margin = p - floor[i];
     if (margin >= 15) top = f;
-    if (f >= 18000 && f <= 19800) { clear18++; if (margin >= 15) clear19++; }
+    if (f >= 18000 && f <= 19800) { inBand++; if (margin >= 15) clear++; }
   });
   const el = $('measureStatus');
   if (top === null) {
     el.className = 'status bad';
     el.textContent = 'ما وصل المسح بوضوح. قرّب الجهازين، ارفع الصوت، وتأكد إن الجهاز الثاني شغّل المسح خلال الوقت.';
-  } else {
-    const share = clear19 / clear18;
-    const advice = share >= 0.9 ? 'فوق السمعي يشتغل بين هذين الجهازين. ابدأ بـ"عادي".'
-      : share >= 0.5 ? 'فوق السمعي يشتغل جزئياً. استخدم "متين".'
-      : 'فوق السمعي ما يشتغل بين هذين الجهازين. استخدم المسموع.';
-    el.className = 'status ' + (share >= 0.9 ? 'ok' : share >= 0.5 ? 'warn' : 'bad');
-    el.textContent = `أعلى تردد وصل بوضوح: ${(top / 1000).toFixed(2)} ألف هرتز. ${advice}`;
+    return;
   }
+  const share = clear / inBand;
+  const advice = share >= 0.9 ? 'فوق السمعي يشتغل بين هذين الجهازين، و"عادي" مناسب.'
+    : share >= 0.5 ? 'فوق السمعي يشتغل جزئياً. استخدم "متين".'
+    : 'فوق السمعي ما يشتغل بين هذين الجهازين. استخدم المسموع.';
+  el.className = 'status ' + (share >= 0.9 ? 'ok' : share >= 0.5 ? 'warn' : 'bad');
+  el.textContent = `أعلى تردد وصل بوضوح: ${(top / 1000).toFixed(2)} ألف هرتز. ${advice}`;
 }
-
-// ---------------------------------------------------------------- experiment log
-
-// attempts: the sender's repeat number that completed the message (counts copies this phone
-// missed entirely); falls back to the copies heard when the sender does not count
-const attempts = (pk) => pk.copy || pk.combined;
-function attemptsText(pk) {
-  const n = attempts(pk);
-  const s = n === 1 ? 'من أول محاولة' : `احتاجت ${n}${pk.copy === 15 ? '+' : ''} محاولات`;
-  return pk.combined > 1 ? `${s} (انجمعت ${pk.combined} نسخ)` : s;
-}
-const dbText = (snrs) => `الإشارة ${snrs.map((v) => v.toFixed(1)).join(' ثم ')} dB`;
-
-$('expLabel').value = store.get('expLabel', '');
-$('expLabel').addEventListener('input', () => store.set('expLabel', $('expLabel').value));
-
-function logRows() { return store.get('log2', []); }
-
-function addLog(pk, when) {
-  const rows = logRows();
-  rows.unshift({
-    t: when.toISOString(),
-    label: $('expLabel').value.trim(),
-    pid: pk.pid,
-    bytes: pk.bytes.length,
-    attempts: attempts(pk),
-    heard: pk.combined,
-    snrs: pk.snrs.map((v) => +v.toFixed(1)),
-  });
-  store.set('log2', rows);
-  renderLog();
-}
-
-const avg = (xs) => xs.reduce((s, v) => s + v, 0) / xs.length;
-
-function table(headers, rows) {
-  const t = document.createElement('table');
-  const head = t.createTHead().insertRow();
-  for (const h of headers) { const th = document.createElement('th'); th.textContent = h; head.append(th); }
-  const body = t.createTBody();
-  for (const r of rows) { const tr = body.insertRow(); for (const v of r) tr.insertCell().textContent = v; }
-  const w = document.createElement('div');
-  w.className = 'tablewrap';
-  w.append(t);
-  return w;
-}
-
-function renderLog() {
-  const rows = logRows();
-  $('logCount').textContent = rows.length ? `(${rows.length})` : '';
-  $('logSummary').textContent = '';
-  $('logTable').textContent = '';
-  if (!rows.length) { $('logSummary').innerHTML = '<div class="empty">كل رسالة تنقرا تنسجل هنا.</div>'; return; }
-
-  // one line per experiment and mode
-  const groups = new Map();
-  for (const r of rows) {
-    const k = `${r.label}|${r.pid}`;
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(r);
-  }
-  $('logSummary').append(table(
-    ['التجربة', 'النمط', 'رسائل', 'من أول محاولة', 'متوسط المحاولات', 'متوسط الإشارة dB'],
-    [...groups.values()].map((g) => {
-      const first = g.filter((r) => r.attempts === 1).length;
-      return [g[0].label || 'بدون وصف', profileName(g[0].pid), g.length, `${first} (${Math.round((100 * first) / g.length)}%)`,
-        avg(g.map((r) => r.attempts)).toFixed(1), avg(g.map((r) => r.snrs[r.snrs.length - 1])).toFixed(1)];
-    }),
-  ));
-  $('logTable').append(table(
-    ['الوقت', 'التجربة', 'النمط', 'بايت', 'المحاولات', 'الإشارة dB'],
-    rows.map((r) => [new Date(r.t).toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-      r.label, profileName(r.pid), r.bytes, r.attempts + (r.heard > 1 ? ` (${r.heard} نسخ)` : ''), r.snrs.join('، ')]),
-  ));
-}
-
-$('logCsv').addEventListener('click', () => {
-  const rows = logRows();
-  if (!rows.length) return;
-  const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
-  const lines = ['time,experiment,band,speed,bytes,attempts,copies_combined,db_final,db_each'];
-  for (const r of rows) {
-    const p = PROFILES[r.pid];
-    lines.push([r.t, esc(r.label), p.band === 'U' ? 'ultrasonic' : 'audible', ['robust', 'normal'][p.speed],
-      r.bytes, r.attempts, r.heard, r.snrs[r.snrs.length - 1], esc(r.snrs.join(' '))].join(','));
-  }
-  const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `hams-log-${new Date().toISOString().slice(0, 10)}.csv`;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-});
-
-$('logClear').addEventListener('click', () => {
-  if (!confirm('تمسح سجل التجارب من هذا الجهاز؟')) return;
-  store.set('log2', []);
-  renderLog();
-});
 
 // ---------------------------------------------------------------- software self-test
 
@@ -565,38 +631,42 @@ $('selfTest').addEventListener('click', async () => {
   const fs = ctx ? ctx.sampleRate : 48000;
   const pid = currentPid();
   const text = $('msg').value || 'السلام عليكم، هذا فحص لنظام همس 123';
-  const bytes = encodeText(text);
-  const lines = [];
   let seed = 7;
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   const randn = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(2 * Math.PI * rnd());
+  const { frames } = frameMessage(encodeText(text));
+  const lines = [];
   for (const noise of [0.002, 0.02, 0.06]) {
-    const pk = buildPacket(bytes, pid, fs, { id: 200 });
-    const y = new Float32Array(pk.length + fs);
-    const delay = Math.round(0.3 * fs);
-    for (let i = 0; i < pk.length; i++) {
-      y[i + delay] += pk[i];
-      // two echoes, 7 ms and 23 ms late
-      if (i + delay + Math.round(0.007 * fs) < y.length) y[i + delay + Math.round(0.007 * fs)] += 0.5 * pk[i];
-      if (i + delay + Math.round(0.023 * fs) < y.length) y[i + delay + Math.round(0.023 * fs)] += 0.3 * pk[i];
+    const pks = frames.map((f, i) => buildPacket(f, pid, fs, { id: i }));
+    const total = pks.reduce((s, p) => s + p.length, 0) + fs;
+    const y = new Float32Array(total + fs);
+    let o = Math.round(0.3 * fs);
+    for (const pk of pks) {
+      for (let i = 0; i < pk.length; i++) {
+        y[o + i] += pk[i];
+        y[o + i + Math.round(0.007 * fs)] += 0.5 * pk[i]; // echoes at 7 ms and 23 ms
+        y[o + i + Math.round(0.023 * fs)] += 0.3 * pk[i];
+      }
+      o += pk.length + Math.round(0.12 * fs);
     }
     for (let i = 0; i < y.length; i++) y[i] += noise * randn();
-    let got = null;
-    const rx = new Receiver(fs, { onPacket: (p) => (got = p) });
+    const asm = new Assembler();
+    let done = null;
+    const rx = new Receiver(fs, { onPacket: (p) => { const f = parseFrame(p.bytes); if (f && f.kind === 'part') { const s = asm.add(f); if (s.complete) done = s.content; } } });
     const t0 = performance.now();
     for (let i = 0; i < y.length; i += 4096) rx.push(y.subarray(i, i + 4096));
-    const ms = performance.now() - t0;
-    const ok = got && decodePayload(got.bytes).text === text;
-    lines.push(`ضوضاء ${noise}: ${ok ? `نجح، الإشارة ${got.snrDb.toFixed(0)} dB` : 'فشل'} (${ms.toFixed(0)} ms)`);
+    const ok = done && decodePayload(done).text === text;
+    lines.push(`ضوضاء ${noise}: ${ok ? 'نجح' : 'فشل'} (${(performance.now() - t0).toFixed(0)} ms)`);
   }
-  out.textContent = `${profileName(pid)}، ${bytes.length} بايت، ${fs} هرتز\n` + lines.join('\n');
+  out.textContent = `${profileName(pid)}، ${frames.length} ${frames.length === 1 ? 'جزء' : 'أجزاء'}، ${fs} هرتز\n` + lines.join('\n');
 });
 
 // ---------------------------------------------------------------- start
 
-updateSendMeta();
-renderInbox();
-renderLog();
+showTab(['send', 'inbox', 'settings'].includes(store.get('tab')) ? store.get('tab') : 'send');
+renderCodes();
+renderSendForm();
+renderMessages();
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }

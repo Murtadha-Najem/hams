@@ -4,183 +4,250 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>همس</title>
-<meta name="description" content="نقل بيانات قصيرة بين الأجهزة بالصوت، بدون إنترنت">
+<meta name="description" content="أرسل نصوص ورموز بين الأجهزة بالصوت، بدون إنترنت">
 <meta name="theme-color" content="#0f1720">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <style>
 :root {
-  --bg: #f6f7f9; --card: #ffffff; --ink: #111827; --muted: #5b6573; --line: #e3e6eb;
-  --accent: #1f6feb; --accent-ink: #ffffff; --ok: #1a7f37; --warn: #b54708; --bad: #c62828;
-  --soft: #eef3fd; --track: #e9edf2; --radius: 14px;
+  --bg: #f5f6f8; --card: #ffffff; --ink: #121821; --muted: #5d6776; --line: #e2e6ec;
+  --accent: #1f6feb; --accent-ink: #ffffff; --accent-soft: #e8f0fe;
+  --ok: #1a7f37; --ok-soft: #e6f4ea; --warn: #9a5b00; --bad: #c62828;
+  --track: #eceff3; --radius: 16px;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0f1720; --card: #16202b; --ink: #e8edf3; --muted: #97a3b3; --line: #253241;
-    --accent: #4c8dff; --accent-ink: #06121f; --ok: #3fb950; --warn: #e3a008; --bad: #ff6b6b;
-    --soft: #1a2a3d; --track: #223040;
+    --bg: #0e141b; --card: #151d27; --ink: #e8edf3; --muted: #95a1b1; --line: #243140;
+    --accent: #5b96ff; --accent-ink: #06121f; --accent-soft: #1a2a40;
+    --ok: #46c267; --ok-soft: #14301f; --warn: #e3a008; --bad: #ff6b6b; --track: #1d2733;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0f1720; --card: #16202b; --ink: #e8edf3; --muted: #97a3b3; --line: #253241;
-  --accent: #4c8dff; --accent-ink: #06121f; --ok: #3fb950; --warn: #e3a008; --bad: #ff6b6b;
-  --soft: #1a2a3d; --track: #223040;
+  --bg: #0e141b; --card: #151d27; --ink: #e8edf3; --muted: #95a1b1; --line: #243140;
+  --accent: #5b96ff; --accent-ink: #06121f; --accent-soft: #1a2a40;
+  --ok: #46c267; --ok-soft: #14301f; --warn: #e3a008; --bad: #ff6b6b; --track: #1d2733;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); }
-body { font: 16px/1.6 "Segoe UI", Tahoma, "Noto Sans Arabic", "Geeza Pro", sans-serif; padding: 0 16px 48px; }
-main { max-width: 680px; margin: 0 auto; }
-header { padding: 20px 0 8px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
-header p { margin: 0; color: var(--muted); font-size: 14px; }
-nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--track); padding: 4px; border-radius: 12px; margin: 12px 0 16px; position: sticky; top: 0; z-index: 5; }
-nav button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 15px; padding: 8px 4px; border-radius: 9px; cursor: pointer; }
-nav button[aria-selected="true"] { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+body { font: 16px/1.65 "Segoe UI", Tahoma, "Noto Sans Arabic", "Geeza Pro", sans-serif; padding: 0 16px 56px; -webkit-tap-highlight-color: transparent; }
+main { max-width: 640px; margin: 0 auto; }
+header { display: flex; align-items: center; gap: 12px; padding: 22px 0 6px; }
+header svg { width: 40px; height: 40px; flex: none; }
+header h1 { margin: 0; font-size: 26px; line-height: 1.1; }
+header p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+.live { margin-inline-start: auto; font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.live::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+.live.on { color: var(--ok); }
+.live.on::before { background: var(--ok); box-shadow: 0 0 0 4px var(--ok-soft); }
+nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--track); padding: 4px; border-radius: 14px; margin: 14px 0 16px; position: sticky; top: 8px; z-index: 5; }
+nav button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 15px; padding: 9px 4px; border-radius: 10px; cursor: pointer; }
+nav button[aria-selected="true"] { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+nav .badge { display: none; margin-inline-start: 6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); font-size: 11px; line-height: 18px; font-weight: 700; vertical-align: 2px; }
+nav .badge.on { display: inline-block; }
 section[role="tabpanel"] { display: none; }
 section[role="tabpanel"].on { display: block; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
-.card h2 { font-size: 16px; margin: 0 0 10px; }
-label.field { display: block; margin: 10px 0 4px; font-size: 14px; color: var(--muted); }
-textarea, input[type="number"], input[type="text"], select {
-  width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
-  border-radius: 10px; padding: 10px 12px;
+.card h2 { font-size: 15px; margin: 0 0 10px; }
+.card h2 small { font-weight: 400; color: var(--muted); }
+textarea, input[type="text"], input[type="password"], select {
+  width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px;
 }
-textarea { min-height: 96px; resize: vertical; }
+textarea { min-height: 120px; resize: vertical; }
+textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
 .meta { font-size: 13px; color: var(--muted); margin-top: 6px; min-height: 1.4em; }
 .meta.bad { color: var(--bad); }
-.seg { display: inline-flex; background: var(--track); border-radius: 10px; padding: 3px; gap: 3px; flex-wrap: wrap; }
-.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.seg { display: flex; background: var(--track); border-radius: 12px; padding: 3px; gap: 3px; }
+.seg button { flex: 1; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 14px; padding: 8px 10px; border-radius: 9px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
-.row .grow { flex: 1; }
-.btn { font: inherit; font-weight: 600; border: 0; border-radius: 12px; padding: 12px 18px; cursor: pointer; background: var(--accent); color: var(--accent-ink); }
-.btn.big { width: 100%; font-size: 17px; padding: 14px; }
-.btn.ghost { background: var(--track); color: var(--ink); }
+.row > .grow { flex: 1; min-width: 0; }
+.btn { font: inherit; font-weight: 600; border: 0; border-radius: 14px; padding: 12px 18px; cursor: pointer; background: var(--accent); color: var(--accent-ink); }
+.btn.big { width: 100%; font-size: 17px; padding: 15px; }
+.btn.ghost { background: var(--track); color: var(--ink); font-weight: 500; }
+.btn.small { padding: 8px 14px; font-size: 14px; border-radius: 10px; }
 .btn.stop { background: var(--bad); color: #fff; }
 .btn:disabled { opacity: .45; cursor: default; }
-.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.stepper { display: inline-flex; align-items: center; background: var(--track); border-radius: 12px; }
+.stepper button { width: 42px; height: 42px; border: 0; background: transparent; color: var(--ink); font-size: 20px; cursor: pointer; border-radius: 12px; }
+.stepper output { min-width: 28px; text-align: center; font-weight: 700; font-size: 17px; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 15px; cursor: pointer; }
+.check input { margin-top: 5px; accent-color: var(--accent); width: 18px; height: 18px; flex: none; }
 input[type="range"] { width: 100%; accent-color: var(--accent); }
 .status { font-size: 14px; margin-top: 10px; min-height: 1.5em; }
 .status.ok { color: var(--ok); } .status.warn { color: var(--warn); } .status.bad { color: var(--bad); }
-.bar { height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.bar { height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; margin-top: 10px; }
 .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
-canvas { width: 100%; height: 110px; display: block; background: var(--bg); border-radius: 10px; border: 1px solid var(--line); }
-.legend { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); direction: ltr; margin-top: 4px; }
-.lights { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
-.lights span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--track); margin-inline-end: 6px; vertical-align: middle; }
-.lights span.hot::before { background: var(--ok); }
-.msg { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 10px; background: var(--bg); }
+.panel { display: none; margin-top: 12px; }
+.panel.on { display: block; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips:not(:empty) { margin-top: 10px; }
+.chip { background: var(--ok-soft); color: var(--ok); border-radius: 999px; padding: 3px 12px; font-size: 13px; font-weight: 600; }
+.chip.lock { background: var(--accent-soft); color: var(--accent); }
+details summary { cursor: pointer; font-size: 15px; font-weight: 600; list-style: none; display: flex; gap: 8px; align-items: baseline; }
+details summary::-webkit-details-marker { display: none; }
+details summary::after { content: "+"; margin-inline-start: auto; color: var(--muted); font-weight: 400; font-size: 20px; line-height: 1; }
+details[open] summary::after { content: "\2212"; }
+details[open] summary { margin-bottom: 10px; }
+label.field { display: block; margin: 12px 0 6px; font-size: 14px; color: var(--muted); }
+canvas { width: 100%; height: 72px; display: block; background: var(--bg); border-radius: 12px; border: 1px solid var(--line); }
+.legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); direction: ltr; margin-top: 3px; }
+.msg { border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin-top: 10px; background: var(--bg); }
 .msg .body { white-space: pre-wrap; word-break: break-word; font-size: 17px; }
-.msg .foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--muted); flex-wrap: wrap; align-items: center; }
+.msg .foot { display: flex; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); flex-wrap: wrap; align-items: center; }
+.msg .foot .sp { flex: 1; }
 .msg .foot button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 3px 10px; cursor: pointer; }
-.tablewrap { overflow-x: auto; margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; }
-table { border-collapse: collapse; font-size: 13px; min-width: 100%; }
-th, td { padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; text-align: start; }
-th { background: var(--track); font-weight: 600; }
-details summary { cursor: pointer; font-size: 14px; color: var(--muted); }
-.empty { color: var(--muted); font-size: 14px; text-align: center; padding: 18px 0 6px; }
-code, .mono { font-family: Consolas, "SF Mono", monospace; font-size: 13px; }
+.empty { color: var(--muted); font-size: 14px; text-align: center; padding: 22px 0 10px; }
+.codes { display: grid; gap: 8px; }
+.codes:not(:empty) { margin-top: 10px; }
+.code { display: flex; align-items: center; gap: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
+.code b { font-weight: 600; }
+.code span { color: var(--muted); font-size: 13px; }
+.code .sp { flex: 1; }
+.code button { font: inherit; font-size: 13px; border: 0; background: transparent; color: var(--bad); cursor: pointer; }
 dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; margin: 0; }
 dl.kv dt { color: var(--muted); }
 dl.kv dd { margin: 0; }
 .note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+.mono { font-family: Consolas, "SF Mono", monospace; font-size: 13px; }
+footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 24px; }
+footer a { color: inherit; }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>همس</h1>
-    <p>نقل بيانات قصيرة بين الأجهزة بالصوت، بدون إنترنت</p>
+    <svg viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="12" fill="var(--accent)"/><g fill="none" stroke="var(--accent-ink)" stroke-width="3.2" stroke-linecap="round"><path d="M14 24h0"/><path d="M20 19a7 7 0 0 1 0 10"/><path d="M25.5 14.5a13.5 13.5 0 0 1 0 19"/><path d="M31 10a20 20 0 0 1 0 28"/></g></svg>
+    <div>
+      <h1>همس</h1>
+      <p>رسائل بالصوت بين الأجهزة، بدون إنترنت</p>
+    </div>
+    <span class="live" id="live">ما يستمع</span>
   </header>
 
   <nav role="tablist">
     <button role="tab" data-tab="send" aria-selected="true">إرسال</button>
-    <button role="tab" data-tab="recv" aria-selected="false">استلام</button>
-    <button role="tab" data-tab="test" aria-selected="false">فحص</button>
+    <button role="tab" data-tab="inbox" aria-selected="false">الوارد<span class="badge" id="badge"></span></button>
+    <button role="tab" data-tab="settings" aria-selected="false">الإعدادات</button>
   </nav>
 
   <section role="tabpanel" id="send" class="on">
     <div class="card">
-      <label class="field" for="msg">الرسالة</label>
-      <textarea id="msg" placeholder="نص، رمز، رابط، باسورد Wi-Fi..."></textarea>
+      <textarea id="msg" placeholder="اكتب الرسالة: نص، رمز، رابط، باسورد Wi-Fi..."></textarea>
       <div class="meta" id="msgMeta"></div>
     </div>
-    <div class="card" id="modeCard">
-      <h2>طريقة البث</h2>
+
+    <div class="card">
+      <h2>نوع الرسالة</h2>
+      <div class="seg" id="privSeg">
+        <button data-v="public" aria-pressed="true">عامة</button>
+        <button data-v="sealed" aria-pressed="false">محمية برمز</button>
+      </div>
+      <div id="sealBox" hidden>
+        <label class="field" for="codePick">الرمز</label>
+        <select id="codePick"></select>
+        <p class="note" id="sealNote">تنشفر الرسالة، وبس الأجهزة اللي عندها نفس الرمز تگدر تقراها. البقية يتجاهلونها.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>متى يوقف البث؟</h2>
       <div class="row" style="margin-top:0">
+        <div class="stepper">
+          <button type="button" id="needPlus" aria-label="أكثر">+</button>
+          <output id="needOut">1</output>
+          <button type="button" id="needMinus" aria-label="أقل">&minus;</button>
+        </div>
+        <div class="grow" id="needText"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <details id="howBox">
+        <summary>طريقة البث <span id="howSummary" class="meta" style="margin:0; font-weight:400"></span></summary>
         <div class="seg" id="bandSeg">
           <button data-v="U" aria-pressed="true">فوق سمعي</button>
           <button data-v="A" aria-pressed="false">مسموع</button>
         </div>
-        <div class="seg" id="speedSeg">
+        <div class="seg" id="speedSeg" style="margin-top:8px">
           <button data-v="0" aria-pressed="false">متين</button>
           <button data-v="1" aria-pressed="true">عادي</button>
         </div>
-      </div>
-      <p class="note" id="modeNote"></p>
-      <label class="field" for="vol">مستوى الصوت</label>
-      <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.9">
-      <div class="row">
-        <label class="check"><input type="checkbox" id="repeat" checked> كرّر البث حتى أوقفه</label>
-      </div>
+        <p class="note" id="modeNote"></p>
+        <label class="field" for="vol">مستوى الصوت</label>
+        <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.9">
+      </details>
     </div>
+
     <button class="btn big" id="sendBtn">إرسال</button>
-    <div class="status" id="sendStatus"></div>
+    <div class="card panel" id="sendPanel">
+      <div class="status" id="sendStatus" style="margin-top:0"></div>
+      <div class="bar"><i id="sendBar"></i></div>
+      <div class="chips" id="receipts"></div>
+    </div>
   </section>
 
-  <section role="tabpanel" id="recv">
+  <section role="tabpanel" id="inbox">
     <button class="btn big" id="listenBtn">ابدأ الاستماع</button>
     <div class="card" style="margin-top:12px">
-      <canvas id="spec" width="640" height="110"></canvas>
-      <div class="legend"><span>0</span><span>5</span><span>10</span><span>15</span><span>20 kHz</span></div>
-      <div class="lights"><span id="litU">فوق سمعي</span><span id="litA">مسموع</span></div>
-      <div class="status" id="recvStatus">الاستماع متوقف.</div>
+      <div class="status" id="recvStatus" style="margin-top:0">اضغط "ابدأ الاستماع" حتى يلتقط الجهاز الرسائل.</div>
       <div class="bar"><i id="recvBar"></i></div>
+      <canvas id="spec" width="640" height="72" style="margin-top:12px"></canvas>
+      <div class="legend"><span>0</span><span>5</span><span>10</span><span>15</span><span>20 kHz</span></div>
     </div>
     <div class="card">
-      <h2>سجل التجارب <span id="logCount" class="meta"></span></h2>
-      <label class="field" for="expLabel" style="margin-top:0">وصف التجربة الحالية (ينحفظ ويا كل رسالة)</label>
-      <input type="text" id="expLabel" placeholder="مثلاً: موبايل إلى لابتوب، متر، صوت كامل">
-      <p class="note">ابدأ الاستماع قبل ما يبدي البث، حتى يكون عدد المحاولات صحيح.</p>
-      <div id="logSummary"></div>
-      <details style="margin-top:10px">
-        <summary>كل الرسائل</summary>
-        <div id="logTable"></div>
-      </details>
-      <div class="row">
-        <button class="btn ghost" id="logCsv">تنزيل CSV</button>
-        <button class="btn ghost" id="logClear">مسح السجل</button>
-      </div>
-    </div>
-    <div class="card">
-      <h2>الرسائل المستلمة</h2>
-      <div id="inbox"><div class="empty">ماكو رسائل بعد.</div></div>
+      <h2>الرسائل</h2>
+      <div id="messages"><div class="empty">ماكو رسائل بعد.</div></div>
     </div>
   </section>
 
-  <section role="tabpanel" id="test">
+  <section role="tabpanel" id="settings">
     <div class="card">
-      <h2>أي ترددات تمشي بين جهازين؟</h2>
-      <p class="note" style="margin-top:0">على الجهاز المستلم اضغط "قِس الاستقبال"، وعلى الجهاز الثاني اضغط "شغّل المسح". المسح يطلّع نغمات من 15 إلى 21.5 ألف هرتز خلال 4 ثواني.</p>
+      <h2>هويتك</h2>
+      <label class="field" for="myName" style="margin-top:0">اسمك، يوصل للمرسل ويا تأكيد الاستلام (اختياري)</label>
+      <input type="text" id="myName" maxlength="16" placeholder="مثلاً: علي">
+      <p class="note">رقم هذا الجهاز: <b id="devNum"></b>. رقم عشوائي ثابت، حتى المرسل يفرّق بين المستلمين.</p>
       <div class="row">
-        <button class="btn grow" id="measureBtn">قِس الاستقبال</button>
-        <button class="btn ghost grow" id="sweepBtn">شغّل المسح</button>
+        <label class="check"><input type="checkbox" id="autoReceipt" checked> أرسل تأكيد استلام تلقائياً لما توصلني رسالة وأگدر أقراها</label>
       </div>
-      <canvas id="sweepSpec" width="640" height="110" style="margin-top:12px"></canvas>
-      <div class="legend"><span>14</span><span>16</span><span>18</span><span>20</span><span>22 kHz</span></div>
-      <div class="status" id="measureStatus"></div>
     </div>
+
     <div class="card">
-      <h2>هذا الجهاز</h2>
-      <dl class="kv" id="devInfo"><dt>الحالة</dt><dd>تظهر المعلومات بعد أول استماع.</dd></dl>
+      <h2>الرموز <small>للرسائل المحمية</small></h2>
+      <p class="note" style="margin-top:0">كل رسالة محمية توصلك تنجرب عليها هاي الرموز. إذا واحد منها فكّها تظهر عندك، وإذا لا تنتجاهل. الرموز محفوظة بهذا الجهاز بس.</p>
+      <div class="codes" id="codeList"></div>
+      <div class="row">
+        <input type="text" id="codeLabel" placeholder="اسم للرمز، مثلاً: الأصدقاء" style="flex:1 1 150px; width:auto">
+        <input type="password" id="codeSecret" placeholder="الرمز نفسه" style="flex:1 1 150px; width:auto" autocomplete="off">
+        <button class="btn small" id="codeAdd">إضافة</button>
+      </div>
+      <div class="meta" id="codeMeta"></div>
     </div>
+
     <div class="card">
-      <h2>فحص برمجي بدون سماعة</h2>
-      <p class="note" style="margin-top:0">يمرر رسالة بالطريقة المختارة عبر قناة محاكاة (صدى وضوضاء) ويتأكد إنها تنفك صح.</p>
-      <div class="row"><button class="btn ghost" id="selfTest">شغّل الفحص</button></div>
-      <div class="status mono" id="selfStatus" style="white-space:pre-wrap"></div>
+      <details>
+        <summary>فحص جهازين</summary>
+        <p class="note" style="margin-top:0">على الجهاز المستلم اضغط "قِس الاستقبال"، وعلى الجهاز الثاني "شغّل المسح". يبين أي ترددات توصل بوضوح ويقترح طريقة البث.</p>
+        <div class="row">
+          <button class="btn grow small" id="measureBtn">قِس الاستقبال</button>
+          <button class="btn ghost grow small" id="sweepBtn">شغّل المسح</button>
+        </div>
+        <canvas id="sweepSpec" width="640" height="72" style="margin-top:12px"></canvas>
+        <div class="legend"><span>14</span><span>16</span><span>18</span><span>20</span><span>22 kHz</span></div>
+        <div class="status" id="measureStatus"></div>
+      </details>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>معلومات تقنية</summary>
+        <dl class="kv" id="devInfo"><dt>المايك</dt><dd>تظهر المعلومات بعد أول استماع.</dd></dl>
+        <div class="row"><button class="btn ghost small" id="selfTest">فحص برمجي بدون سماعة</button></div>
+        <div class="status mono" id="selfStatus" style="white-space:pre-wrap"></div>
+      </details>
     </div>
   </section>
+
+  <footer>همس، مفتوح المصدر على <a href="https://github.com/murtadha203/hams">GitHub</a></footer>
 </main>
 <script type="module" src="app.js"></script>
 </body>
