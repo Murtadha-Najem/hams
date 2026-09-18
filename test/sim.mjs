@@ -71,7 +71,7 @@ export function scene({ pid, payloads, fsTx = 48000, fsRx = 48000, ppm = 60, snr
   const band = PROFILES[pid].band;
   const parts = [new Float32Array(Math.round((0.2 + rand() * 0.5) * fsTx))];
   for (const p of payloads) {
-    parts.push(buildPacket(p, pid, fsTx, { id: 77 }));
+    parts.push(buildPacket(p, pid, fsTx, { id: 45 }));
     parts.push(new Float32Array(Math.round(0.4 * fsTx)));
   }
   parts.push(new Float32Array(Math.round(0.6 * fsTx)));
@@ -125,11 +125,8 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
 const quick = process.argv[2] === 'quick';
 const t0 = Date.now();
 
-console.log('profile     bytes/s  airtime(48B)');
-for (const p of PROFILES) {
-  const bps = (48 * 8) / (airtime(48, p.id) - 0.21);
-  console.log(`${p.key.padEnd(11)} ${(bps / 8).toFixed(1).padStart(6)}  ${airtime(48, p.id).toFixed(2)} s`);
-}
+console.log('profile     airtime 10 B   48 B');
+for (const p of PROFILES) console.log(`${p.key.padEnd(11)} ${airtime(10, p.id).toFixed(2).padStart(8)} s ${airtime(48, p.id).toFixed(2).padStart(6)} s`);
 
 const snrs = quick ? [12, 3] : [15, 9, 6, 3, 0, -3];
 const trials = quick ? 4 : 10;
@@ -139,6 +136,11 @@ for (const p of PROFILES) {
   const row = snrs.map((s) => String(trialRate(p.id, s, trials).ok).padStart(5));
   console.log(`${p.key.padEnd(11)} ${row.join('')}`);
 }
+
+// the echo measured in a real room on 18 Sep 2026: the old fast mode got 3 of 9 there
+console.log(`
+strong echo (RT60 0.5 s, direct = reverb), SNR 20 dB, 24-byte payload: success out of ${trials}`);
+for (const p of PROFILES) console.log(`${p.key.padEnd(11)} ${String(trialRate(p.id, 20, trials, { rt60: 0.5, drr: 0, len: 24 }).ok).padStart(5)}`);
 
 // repeats: the receiver adds up soft values from each copy it hears
 if (!quick) {

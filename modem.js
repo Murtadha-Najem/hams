@@ -2,10 +2,12 @@
 // Pure DSP with no DOM, so the browser app and the Node simulation (test/sim.mjs) run the same code.
 //
 // Packet on air:
-//   chirp (100 ms sweep across the band, for detection and timing)
-//   gap (20 ms)
-//   header symbols (always the band's robust profile): profile, length, message id, CRC-8
-//   payload symbols (chosen profile): payload + CRC-16
+//   chirp (80 ms sweep across the band, for detection and timing; its direction names the profile)
+//   gap (15 ms)
+//   header symbols (24 bits): repeat number, length, message id, CRC-6
+//   payload symbols: payload + CRC-16
+// Header and payload use the same profile, so a normal-speed packet is not held back by a
+// robust-speed header.
 //
 // Each symbol is multi-tone FSK: the band is split into groups of M adjacent bins and every group
 // sends one tone, so a symbol carries G * log2(M) bits. Bits are protected by a K=7 convolutional
@@ -13,10 +15,10 @@
 // A receiver that misses a packet keeps its soft values and adds the next repeat to them.
 
 export const RAMP_T = 0.0015;
-export const CHIRP_T = 0.1;
-export const GAP_T = 0.02;
-export const LEAD_T = 0.03;
-export const TAIL_T = 0.06;
+export const CHIRP_T = 0.08;
+export const GAP_T = 0.015;
+export const LEAD_T = 0.02;
+export const TAIL_T = 0.02;
 
 // df is also the symbol window: bins are 1/tw apart, so they are orthogonal over one window.
 export const BANDS = {
@@ -28,17 +30,23 @@ export const BANDS = {
 //    reverb tail of one symbol out of the next symbol's bins)
 // tg: silence after each tone, for the room's echo to die down
 // rate: 2 means code rate 1/2, 3 means 2/3 (punctured)
+// dir: chirp direction, +1 rising, -1 falling; unique within a band
+// hdrRep: how many times the coded header is sent. The header cannot be combined across repeats,
+//    so in the normal profile it is sent twice to stay at least as strong as the payload.
+//
+// There is no faster mode on purpose. Every design faster than "normal" that was tried (shorter
+// silence, a 2/3 code, or both) fell apart in a room with the echo measured on 18 Sep 2026, and
+// the ones that survived it came out slower than normal (test/sim.mjs, echo scenario).
 export const PROFILES = [
-  { id: 0, band: 'U', key: 'u-robust', h: 2, M: 4, tg: 0.012, rate: 2 },
-  { id: 1, band: 'U', key: 'u-normal', h: 1, M: 4, tg: 0.008, rate: 2 },
-  { id: 2, band: 'U', key: 'u-fast', h: 1, M: 4, tg: 0.005, rate: 3 },
-  { id: 3, band: 'A', key: 'a-robust', h: 2, M: 4, tg: 0.012, rate: 2 },
-  { id: 4, band: 'A', key: 'a-normal', h: 1, M: 4, tg: 0.008, rate: 2 },
-  { id: 5, band: 'A', key: 'a-fast', h: 1, M: 4, tg: 0.005, rate: 3 },
+  { id: 0, band: 'U', key: 'u-robust', speed: 0, dir: 1, h: 2, M: 4, tg: 0.012, rate: 2, hdrRep: 1 },
+  { id: 1, band: 'U', key: 'u-normal', speed: 1, dir: -1, h: 1, M: 4, tg: 0.008, rate: 2, hdrRep: 2 },
+  { id: 2, band: 'A', key: 'a-robust', speed: 0, dir: 1, h: 2, M: 4, tg: 0.012, rate: 2, hdrRep: 1 },
+  { id: 3, band: 'A', key: 'a-normal', speed: 1, dir: -1, h: 1, M: 4, tg: 0.008, rate: 2, hdrRep: 2 },
 ];
-export const HEADER_PROFILE = { U: 0, A: 3 };
-const HDR_BYTES = 4;
+export const profileId = (band, speed) => PROFILES.find((p) => p.band === band && p.speed === speed).id;
+const HDR_BITS = 26; // repeat number 4, length 8, id 6, CRC-8 8
 export const MAX_PAYLOAD = 255;
+export const MAX_ID = 63;
 
 // ---------------------------------------------------------------- small utilities
 
@@ -60,13 +68,29 @@ export function crc16(bytes) {
   return c;
 }
 
-export function crc8(bytes) {
+// CRC-8 (x^8 + x^2 + x + 1) over a bit array
+function crc8Bits(bits) {
   let c = 0;
-  for (const b of bytes) {
-    c ^= b;
-    for (let i = 0; i < 8; i++) c = c & 0x80 ? ((c << 1) ^ 0x07) & 0xff : (c << 1) & 0xff;
+  for (const b of bits) {
+    const top = ((c >> 7) & 1) ^ b;
+    c = (c << 1) & 0xff;
+    if (top) c ^= 0x07;
   }
   return c;
+}
+
+const toBits = (v, w) => Array.from({ length: w }, (_, i) => (v >> (w - 1 - i)) & 1);
+const fromBits = (bits) => bits.reduce((v, b) => (v << 1) | b, 0);
+
+function headerBits(copy, len, id) {
+  const bits = [...toBits(copy, 4), ...toBits(len, 8), ...toBits(id, 6)];
+  return Uint8Array.from([...bits, ...toBits(crc8Bits(bits), 8)]);
+}
+
+function parseHeader(bits) {
+  const b = Array.from(bits);
+  if (crc8Bits(b.slice(0, 18)) !== fromBits(b.slice(18, 26))) return null;
+  return { copy: fromBits(b.slice(0, 4)), len: fromBits(b.slice(4, 12)), id: fromBits(b.slice(12, 18)) };
 }
 
 const gray = (t) => t ^ (t >> 1);
@@ -306,14 +330,21 @@ export function symbolCount(pid, payloadLen) {
   return Math.ceil(codedLength((payloadLen + 2) * 8, L.p.rate) / L.bps);
 }
 
+const headerCoded = (pid) => codedLength(HDR_BITS, 2) * PROFILES[pid].hdrRep;
+export function headerSymbols(pid) {
+  return Math.ceil(headerCoded(pid) / layout(pid, 48000).bps);
+}
+
 // ---------------------------------------------------------------- transmitter
 
 const chirpCache = new Map();
-export function chirp(band, fs) {
-  const key = band + '@' + fs;
+export function chirp(pid, fs) {
+  const key = pid + '@' + fs;
   let c = chirpCache.get(key);
   if (c) return c;
-  const [fa, fb] = BANDS[band].chirp;
+  const p = PROFILES[pid];
+  const [lo, hi] = BANDS[p.band].chirp;
+  const [fa, fb] = p.dir > 0 ? [lo, hi] : [hi, lo];
   const Lc = Math.round(CHIRP_T * fs);
   const taper = Math.round(0.1 * Lc);
   c = new Float32Array(Lc);
@@ -349,9 +380,10 @@ function synthSymbol(out, off, bins, L, fs, amp) {
   for (let n = 0; n < len; n++) out[off + n] += tmp[n] * s;
 }
 
-function writeSymbols(out, off, slots, S, L, fs, amp) {
+// s0: index of the first symbol in the packet, so the bin sets keep alternating from header to payload
+function writeSymbols(out, off, slots, S, L, fs, amp, s0 = 0) {
   for (let s = 0; s < S; s++) {
-    const groups = L.sets[s % L.p.h];
+    const groups = L.sets[(s0 + s) % L.p.h];
     const bins = groups.map((grp, g) => {
       let v = 0;
       for (let j = 0; j < L.k; j++) v |= slots[s * L.bps + g * L.k + j] << j;
@@ -362,34 +394,32 @@ function writeSymbols(out, off, slots, S, L, fs, amp) {
   return off + S * L.Ns;
 }
 
-// copy: which repeat this is (1 to 15, capped), so the receiver can tell how many attempts a
-// message took, including copies it never heard. 0 means not counted.
-export function buildPacket(payload, pid, fs, { id = Math.floor(Math.random() * 256), amp = 0.9, copy = 0 } = {}) {
+// id: 0 to 63. copy: which repeat this is (1 to 15, capped), so the receiver can tell how many
+// attempts a message took, including copies it never heard. 0 means not counted.
+export function buildPacket(payload, pid, fs, { id = Math.floor(Math.random() * (MAX_ID + 1)), amp = 0.9, copy = 0 } = {}) {
   if (!payload.length || payload.length > MAX_PAYLOAD) throw new Error('payload must be 1 to 255 bytes');
   const p = PROFILES[pid];
-  const LH = layout(HEADER_PROFILE[p.band], fs), LP = layout(pid, fs);
-  const hdr = [(pid << 4) | Math.min(15, copy), payload.length, id & 255];
-  hdr.push(crc8(hdr));
-  const H = toSlots(convEncode(bytesToBits(hdr)), LH.bps);
+  const L = layout(pid, fs);
+  const hc = convEncode(headerBits(Math.min(15, copy), payload.length, id & MAX_ID));
+  const hdr = new Uint8Array(hc.length * p.hdrRep);
+  for (let r = 0; r < p.hdrRep; r++) hdr.set(hc, r * hc.length);
+  const H = toSlots(hdr, L.bps);
   const crc = crc16(payload);
   const body = Uint8Array.from([...payload, crc >> 8, crc & 255]);
-  const P = toSlots(puncture(convEncode(bytesToBits(body)), p.rate), LP.bps);
-  const c = chirp(p.band, fs);
+  const P = toSlots(puncture(convEncode(bytesToBits(body)), p.rate), L.bps);
+  const c = chirp(pid, fs);
   const lead = Math.round(LEAD_T * fs), gap = Math.round(GAP_T * fs), tail = Math.round(TAIL_T * fs);
-  const total = lead + c.length + gap + H.S * LH.Ns + P.S * LP.Ns + tail;
-  const out = new Float32Array(total);
+  const out = new Float32Array(lead + c.length + gap + (H.S + P.S) * L.Ns + tail);
   for (let n = 0; n < c.length; n++) out[lead + n] = c[n] * amp;
-  let off = lead + c.length + gap;
-  off = writeSymbols(out, off, H.slots, H.S, LH, fs, amp);
-  writeSymbols(out, off, P.slots, P.S, LP, fs, amp);
+  const off = writeSymbols(out, lead + c.length + gap, H.slots, H.S, L, fs, amp);
+  writeSymbols(out, off, P.slots, P.S, L, fs, amp, H.S);
   return out;
 }
 
 export function airtime(payloadLen, pid) {
-  const p = PROFILES[pid], b = BANDS[p.band];
-  const hp = PROFILES[HEADER_PROFILE[p.band]];
-  const hS = Math.ceil(codedLength(HDR_BYTES * 8, 2) / layout(hp.id, 48000).bps);
-  return LEAD_T + CHIRP_T + GAP_T + hS * (1 / b.df + hp.tg) + symbolCount(pid, payloadLen) * (1 / b.df + p.tg) + TAIL_T;
+  const p = PROFILES[pid];
+  const sym = 1 / BANDS[p.band].df + p.tg;
+  return LEAD_T + CHIRP_T + GAP_T + (headerSymbols(pid) + symbolCount(pid, payloadLen)) * sym + TAIL_T;
 }
 
 // ---------------------------------------------------------------- receiver
@@ -426,22 +456,20 @@ class BandRx {
     if (this.b.lp < fs / 2 - 500) this.filters.push(biquad('lp', this.b.lp, fs), biquad('lp', this.b.lp, fs));
     this.ring = new Float32Array(RING);
     this.n = 0;
-    const c = chirp(band, fs);
-    this.Lc = c.length;
-    this.Ec = c.reduce((s, v) => s + v * v, 0);
+    this.Lc = Math.round(CHIRP_T * fs);
     this.B = 8192;
     this.F = nextPow2(this.B + this.Lc);
-    this.Cre = new Float64Array(this.F);
-    this.Cim = new Float64Array(this.F);
-    this.Cre.set(c);
-    fft(this.Cre, this.Cim);
+    // one matched filter per profile of the band: the chirp's direction says which profile follows
+    this.templates = PROFILES.filter((p) => p.band === band).map((p) => {
+      const c = chirp(p.id, fs);
+      const re = new Float64Array(this.F), im = new Float64Array(this.F);
+      re.set(c);
+      fft(re, im);
+      return { pid: p.id, re, im, Ec: c.reduce((a, v) => a + v * v, 0), pending: null };
+    });
     this.corrPos = 0;
-    this.pending = null;
     this.jobs = [];
     this.gap = Math.round(GAP_T * fs);
-    this.LH = layout(HEADER_PROFILE[band], fs);
-    this.hCoded = codedLength(HDR_BYTES * 8, 2);
-    this.hS = Math.ceil(this.hCoded / this.LH.bps);
     this.win = new Float32Array(Math.round(fs / this.b.df) + 8);
     this.coef = new Map();
   }
@@ -457,45 +485,48 @@ class BandRx {
 
   correlate() {
     const { F, B, Lc, ring } = this;
-    const re = new Float64Array(F), im = new Float64Array(F);
+    const xr = new Float64Array(F), xi = new Float64Array(F);
     const segLen = B + Lc - 1;
     const pe = new Float64Array(segLen + 1);
     for (let i = 0; i < segLen; i++) {
       const v = ring[(this.corrPos + i) & (RING - 1)];
-      re[i] = v;
+      xr[i] = v;
       pe[i + 1] = pe[i] + v * v;
     }
-    fft(re, im);
-    for (let i = 0; i < F; i++) {
-      const a = re[i], b = im[i], c = this.Cre[i], d = this.Cim[i];
-      re[i] = a * c + b * d;
-      im[i] = b * c - a * d;
-    }
-    fft(re, im, true);
+    fft(xr, xi);
     let maxRho = 0;
-    for (let t = 0; t < B; t++) {
-      const ex = pe[t + Lc] - pe[t];
-      if (ex <= 1e-12) continue;
-      const rho = Math.abs(re[t]) / Math.sqrt(this.Ec * ex);
-      if (rho > maxRho) maxRho = rho;
-      if (rho < DETECT_THRESHOLD) continue;
-      const a = this.corrPos + t;
-      if (this.pending && a - this.pending.a < Lc) {
-        if (rho > this.pending.rho) this.pending = { a, rho };
-      } else {
-        if (this.pending) this.finalize(this.pending);
-        this.pending = { a, rho };
+    for (const tp of this.templates) {
+      const re = new Float64Array(F), im = new Float64Array(F);
+      for (let i = 0; i < F; i++) {
+        const a = xr[i], b = xi[i], c = tp.re[i], d = tp.im[i];
+        re[i] = a * c + b * d;
+        im[i] = b * c - a * d;
       }
+      fft(re, im, true);
+      for (let t = 0; t < B; t++) {
+        const ex = pe[t + Lc] - pe[t];
+        if (ex <= 1e-12) continue;
+        const rho = Math.abs(re[t]) / Math.sqrt(tp.Ec * ex);
+        if (rho > maxRho) maxRho = rho;
+        if (rho < DETECT_THRESHOLD) continue;
+        const a = this.corrPos + t;
+        if (tp.pending && a - tp.pending.a < Lc) {
+          if (rho > tp.pending.rho) tp.pending = { a, rho };
+        } else {
+          if (tp.pending) this.finalize(tp.pending, tp.pid);
+          tp.pending = { a, rho };
+        }
+      }
+      if (tp.pending && this.corrPos + B - tp.pending.a > Lc) { this.finalize(tp.pending, tp.pid); tp.pending = null; }
     }
     this.corrPos += B;
-    if (this.pending && this.corrPos - this.pending.a > Lc) { this.finalize(this.pending); this.pending = null; }
     this.maxRho = maxRho;
   }
 
-  finalize(pk) {
-    const off = Math.round(0.003 * this.fs);
+  finalize(pk, pid) {
+    const L = layout(pid, this.fs), hS = headerSymbols(pid);
     const hdrBase = pk.a + this.Lc + this.gap;
-    this.jobs.push({ stage: 'hdr', start: pk.a, rho: pk.rho, hdrBase, need: hdrBase + this.hS * this.LH.Ns + off + this.LH.Ns });
+    this.jobs.push({ stage: 'hdr', pid, L, hS, start: pk.a, rho: pk.rho, hdrBase, need: hdrBase + (hS + 1) * L.Ns + Math.round(0.003 * this.fs) });
   }
 
   runJobs() {
@@ -570,37 +601,35 @@ class BandRx {
   }
 
   decodeHeader(job) {
-    const L = this.LH, fs = this.fs;
+    const { L, hS, pid } = job, fs = this.fs;
     const span = Math.round(0.003 * fs), step = Math.max(1, Math.round(0.0005 * fs));
     const cands = [];
     for (let d = -span; d <= span; d += step) {
       let m = 0;
-      for (let s = 0; s < this.hS; s++) m += this.sharpness(job.hdrBase + d + s * L.Ns + L.R, L, s);
+      for (let s = 0; s < hS; s++) m += this.sharpness(job.hdrBase + d + s * L.Ns + L.R, L, s);
       cands.push({ d, m });
     }
     cands.sort((a, b) => b.m - a.m);
     for (const { d } of cands.slice(0, 3)) {
-      const slots = new Float32Array(this.hS * L.bps);
-      for (let s = 0; s < this.hS; s++) this.symbolLLR(job.hdrBase + d + s * L.Ns + L.R, L, s, slots, s * L.bps);
-      const bytes = bitsToBytes(viterbi(fromSlots(slots, this.hCoded), HDR_BYTES * 8));
-      if (crc8(bytes.subarray(0, 3)) !== bytes[3]) continue;
-      const pid = bytes[0] >> 4, copy = bytes[0] & 15, len = bytes[1], id = bytes[2];
-      if (!PROFILES[pid] || PROFILES[pid].band !== this.band || len < 1) continue;
-      const LP = layout(pid, fs);
-      const S = Math.ceil(codedLength((len + 2) * 8, LP.p.rate) / LP.bps);
-      Object.assign(job, {
-        stage: 'pay', pid, len, id, copy, S, LP,
-        payBase: job.hdrBase + d + this.hS * L.Ns,
-        need: job.hdrBase + d + this.hS * L.Ns + S * LP.Ns + Math.round(0.004 * fs) + LP.Ns,
-      });
-      this.parent.onEvent({ type: 'incoming', band: this.band, pid, len, id, seconds: (job.need - this.n) / fs });
+      const slots = new Float32Array(hS * L.bps);
+      for (let s = 0; s < hS; s++) this.symbolLLR(job.hdrBase + d + s * L.Ns + L.R, L, s, slots, s * L.bps);
+      const n = codedLength(HDR_BITS, 2), reps = PROFILES[pid].hdrRep;
+      const all = fromSlots(slots, n * reps);
+      const llr = new Float32Array(n);
+      for (let r = 0; r < reps; r++) for (let i = 0; i < n; i++) llr[i] += all[r * n + i];
+      const h = parseHeader(viterbi(llr, HDR_BITS));
+      if (!h || h.len < 1) continue;
+      const S = symbolCount(pid, h.len);
+      const payBase = job.hdrBase + d + hS * L.Ns;
+      Object.assign(job, { stage: 'pay', ...h, S, payBase, need: payBase + (S + 1) * L.Ns + Math.round(0.004 * fs) });
+      this.parent.onEvent({ type: 'incoming', band: this.band, pid, len: h.len, id: h.id, seconds: (job.need - this.n) / fs });
       return true;
     }
     return false;
   }
 
   decodePayload(job) {
-    const { LP: L, S, pid, len, id, copy } = job;
+    const { L, S, hS, pid, len, id, copy } = job;
     const fs = this.fs;
     const unit = Math.max(1, Math.round(fs / 16000));
     const slots = new Float32Array(S * L.bps);
@@ -613,11 +642,11 @@ class BandRx {
       for (let i = -reach; i <= reach; i++) {
         const d = i * unit;
         let m = 0;
-        for (let s = s0; s < s1; s++) m += this.sharpness(job.payBase + cur + d + s * L.Ns + L.R, L, s);
+        for (let s = s0; s < s1; s++) m += this.sharpness(job.payBase + cur + d + s * L.Ns + L.R, L, hS + s);
         if (m > best.m) best = { d, m };
       }
       cur += best.d;
-      for (let s = s0; s < s1; s++) snr += this.symbolLLR(job.payBase + cur + s * L.Ns + L.R, L, s, slots, s * L.bps);
+      for (let s = s0; s < s1; s++) snr += this.symbolLLR(job.payBase + cur + s * L.Ns + L.R, L, hS + s, slots, s * L.bps);
     }
     const nbits = (len + 2) * 8;
     const llr = depuncture(fromSlots(slots, codedLength(nbits, L.p.rate)), 2 * (nbits + 6), L.p.rate);
@@ -673,6 +702,7 @@ export class Receiver {
       }
     }
     if (!bytes) {
+      if (pk.snrDb < 2) return; // most likely noise that passed the header check
       this.onEvent({ type: 'failed', band: pk.band, pid: pk.pid, id: pk.id, snrDb: pk.snrDb, heard: this.partial.get(key).count, copy: pk.copy });
       return;
     }

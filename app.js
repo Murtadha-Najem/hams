@@ -1,4 +1,4 @@
-import { buildPacket, Receiver, PROFILES, HEADER_PROFILE, airtime, MAX_PAYLOAD, bitsPerSecond } from './modem.js';
+import { buildPacket, Receiver, PROFILES, profileId, airtime, MAX_PAYLOAD, MAX_ID, bitsPerSecond } from './modem.js';
 import { encodeText, decodePayload, textEncodingName } from './codec.js';
 
 const $ = (id) => document.getElementById(id);
@@ -7,9 +7,9 @@ const store = {
   set(k, v) { try { localStorage.setItem('hams.' + k, JSON.stringify(v)); } catch { /* private mode: settings just do not persist */ } },
 };
 
-const SPEED_NAMES = ['متين', 'عادي', 'سريع'];
+const SPEED_NAMES = ['متين', 'عادي'];
 const BAND_NAMES = { U: 'فوق سمعي', A: 'مسموع' };
-const profileName = (pid) => `${BAND_NAMES[PROFILES[pid].band]}، ${SPEED_NAMES[pid - HEADER_PROFILE[PROFILES[pid].band]]}`;
+const profileName = (pid) => `${BAND_NAMES[PROFILES[pid].band]}، ${SPEED_NAMES[PROFILES[pid].speed]}`;
 
 // ---------------------------------------------------------------- tabs
 
@@ -49,7 +49,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const ownIds = new Set();
 function newId() {
   let id;
-  do id = Math.floor(Math.random() * 256); while (ownIds.has(id));
+  do id = Math.floor(Math.random() * (MAX_ID + 1)); while (ownIds.has(id));
   ownIds.add(id);
   setTimeout(() => ownIds.delete(id), 60000);
   return id;
@@ -58,7 +58,8 @@ function newId() {
 // ---------------------------------------------------------------- send settings
 
 const settings = { band: 'U', speed: 1, vol: 0.9, repeat: true, ...store.get('settings', {}) };
-const currentPid = () => HEADER_PROFILE[settings.band] + settings.speed;
+if (!(settings.speed in SPEED_NAMES)) settings.speed = 1; // the fast mode no longer exists
+const currentPid = () => profileId(settings.band, settings.speed);
 
 function bindSeg(el, key, parse) {
   const sync = () => el.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(parse(b.dataset.v) === settings[key])));
@@ -470,7 +471,7 @@ const dbText = (snrs) => `الإشارة ${snrs.map((v) => v.toFixed(1)).join(' 
 $('expLabel').value = store.get('expLabel', '');
 $('expLabel').addEventListener('input', () => store.set('expLabel', $('expLabel').value));
 
-function logRows() { return store.get('log', []); }
+function logRows() { return store.get('log2', []); }
 
 function addLog(pk, when) {
   const rows = logRows();
@@ -483,7 +484,7 @@ function addLog(pk, when) {
     heard: pk.combined,
     snrs: pk.snrs.map((v) => +v.toFixed(1)),
   });
-  store.set('log', rows);
+  store.set('log2', rows);
   renderLog();
 }
 
@@ -537,7 +538,7 @@ $('logCsv').addEventListener('click', () => {
   const lines = ['time,experiment,band,speed,bytes,attempts,copies_combined,db_final,db_each'];
   for (const r of rows) {
     const p = PROFILES[r.pid];
-    lines.push([r.t, esc(r.label), p.band === 'U' ? 'ultrasonic' : 'audible', ['robust', 'normal', 'fast'][r.pid - HEADER_PROFILE[p.band]],
+    lines.push([r.t, esc(r.label), p.band === 'U' ? 'ultrasonic' : 'audible', ['robust', 'normal'][p.speed],
       r.bytes, r.attempts, r.heard, r.snrs[r.snrs.length - 1], esc(r.snrs.join(' '))].join(','));
   }
   const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -550,7 +551,7 @@ $('logCsv').addEventListener('click', () => {
 
 $('logClear').addEventListener('click', () => {
   if (!confirm('تمسح سجل التجارب من هذا الجهاز؟')) return;
-  store.set('log', []);
+  store.set('log2', []);
   renderLog();
 });
 
