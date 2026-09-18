@@ -9,7 +9,7 @@
 // "content" is what codec.js produces, or a sealed blob:
 //   sealed   [9][code hint][iv: 8][AES-GCM ciphertext with a 64-bit tag]
 
-import { encodeText, decodePayload } from './codec.js?v=9';
+import { encodeText, decodePayload } from './codec.js?v=10';
 
 const F_SINGLE = 1, F_PART = 2, F_RECEIPT = 3;
 export const SEALED = 9;

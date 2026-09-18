@@ -1,5 +1,5 @@
-import { buildPacket, Receiver, PROFILES, profileId, airtime, bitsPerSecond } from './modem.js?v=9';
-import { frameMessage, parseFrame, receiptFrame, Assembler, seal, unseal, SEALED, randomId16, chatContent, parseChat, MAX_CONTENT } from './protocol.js?v=9';
+import { buildPacket, Receiver, PROFILES, profileId, airtime, bitsPerSecond } from './modem.js?v=10';
+import { frameMessage, parseFrame, receiptFrame, Assembler, seal, unseal, SEALED, randomId16, chatContent, parseChat, MAX_CONTENT } from './protocol.js?v=10';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -51,8 +51,8 @@ const saveChats = () => {
   for (const k of Object.keys(chats)) if (chats[k].length > 300) chats[k] = chats[k].slice(-300);
   store.set('chat', chats);
 };
-// The public room forgets: messages older than a day are cleared. Groups keep their history.
-const PUBLIC_KEEP_MS = 24 * 60 * 60 * 1000;
+// The public room forgets: messages older than six hours are cleared. Groups keep their history.
+const PUBLIC_KEEP_MS = 6 * 60 * 60 * 1000;
 function expirePublic() {
   const list = chats.public || [];
   const kept = list.filter((m) => Date.now() - m.t < PUBLIC_KEEP_MS || ['queued', 'sending'].includes(m.status));
@@ -412,7 +412,7 @@ function renderRooms() {
   add.addEventListener('click', () => openSheet('newGroup'));
   box.append(add);
   $('roomInfo').textContent = room === 'public'
-    ? 'Anyone nearby can read this room. Messages clear after 24 hours.'
+    ? 'Anyone nearby can read this room. Messages clear after 6 hours.'
     : 'Encrypted with the group code. Only members can read it.';
 }
 

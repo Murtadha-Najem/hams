@@ -8,7 +8,7 @@ Hams ("whisper" in Arabic) is a chat that travels as tones between 18 and 19.8 k
 
 ## Features
 
-- **Public room:** everyone nearby with Hams open can read it and reply. Its messages clear after 24 hours; groups keep their history.
+- **Public room:** everyone nearby with Hams open can read it and reply. Its messages clear after 6 hours; groups keep their history.
 - **Groups:** a group is a shared code. Its messages are encrypted with that code, so only members see them; everyone else ignores them silently.
 - **Delivery marks:** a clock while sending, one tick once the message has gone out, and two ticks once at least one device confirms it received the message. Tap a message to see who received it. If nobody confirms after a few rounds, the message is marked as not delivered and can be sent again.
 - **Replies:** tap a message and reply to it; the reply carries a quote of the original.
