@@ -58,6 +58,22 @@ function showTab(name) {
   window.scrollTo(0, 0);
 }
 
+// ---------------------------------------------------------------- light and dark
+
+function renderTheme() {
+  const dark = document.documentElement.dataset.theme === 'dark';
+  $('themeBtn').querySelector('use').setAttribute('href', dark ? '#i-sun' : '#i-moon');
+  $('themeBtn').setAttribute('aria-label', dark ? 'الوضع النهاري' : 'الوضع الليلي');
+  $('themeColor').content = dark ? '#121110' : '#f3eee5';
+}
+$('themeBtn').addEventListener('click', () => {
+  const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = next;
+  store.set('theme', next);
+  renderTheme();
+});
+renderTheme();
+
 // ---------------------------------------------------------------- audio
 
 let ctx = null;
