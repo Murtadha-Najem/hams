@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>همس</title>
+<meta name="description" content="نقل بيانات قصيرة بين الأجهزة بالصوت، بدون إنترنت">
+<meta name="theme-color" content="#0f1720">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --ink: #111827; --muted: #5b6573; --line: #e3e6eb;
+  --accent: #1f6feb; --accent-ink: #ffffff; --ok: #1a7f37; --warn: #b54708; --bad: #c62828;
+  --soft: #eef3fd; --track: #e9edf2; --radius: 14px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1720; --card: #16202b; --ink: #e8edf3; --muted: #97a3b3; --line: #253241;
+    --accent: #4c8dff; --accent-ink: #06121f; --ok: #3fb950; --warn: #e3a008; --bad: #ff6b6b;
+    --soft: #1a2a3d; --track: #223040;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1720; --card: #16202b; --ink: #e8edf3; --muted: #97a3b3; --line: #253241;
+  --accent: #4c8dff; --accent-ink: #06121f; --ok: #3fb950; --warn: #e3a008; --bad: #ff6b6b;
+  --soft: #1a2a3d; --track: #223040;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); }
+body { font: 16px/1.6 "Segoe UI", Tahoma, "Noto Sans Arabic", "Geeza Pro", sans-serif; padding: 0 16px 48px; }
+main { max-width: 680px; margin: 0 auto; }
+header { padding: 20px 0 8px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+h1 { margin: 0; font-size: 28px; letter-spacing: 0; }
+header p { margin: 0; color: var(--muted); font-size: 14px; }
+nav { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; background: var(--track); padding: 4px; border-radius: 12px; margin: 12px 0 16px; position: sticky; top: 0; z-index: 5; }
+nav button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 15px; padding: 8px 4px; border-radius: 9px; cursor: pointer; }
+nav button[aria-selected="true"] { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+section[role="tabpanel"] { display: none; }
+section[role="tabpanel"].on { display: block; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+.card h2 { font-size: 16px; margin: 0 0 10px; }
+label.field { display: block; margin: 10px 0 4px; font-size: 14px; color: var(--muted); }
+textarea, input[type="number"], input[type="text"], select {
+  width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px;
+}
+textarea { min-height: 96px; resize: vertical; }
+.meta { font-size: 13px; color: var(--muted); margin-top: 6px; min-height: 1.4em; }
+.meta.bad { color: var(--bad); }
+.seg { display: inline-flex; background: var(--track); border-radius: 10px; padding: 3px; gap: 3px; flex-wrap: wrap; }
+.seg button { border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 14px; padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; }
+.row .grow { flex: 1; }
+.btn { font: inherit; font-weight: 600; border: 0; border-radius: 12px; padding: 12px 18px; cursor: pointer; background: var(--accent); color: var(--accent-ink); }
+.btn.big { width: 100%; font-size: 17px; padding: 14px; }
+.btn.ghost { background: var(--track); color: var(--ink); }
+.btn.stop { background: var(--bad); color: #fff; }
+.btn:disabled { opacity: .45; cursor: default; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.status { font-size: 14px; margin-top: 10px; min-height: 1.5em; }
+.status.ok { color: var(--ok); } .status.warn { color: var(--warn); } .status.bad { color: var(--bad); }
+.bar { height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .2s linear; }
+canvas { width: 100%; height: 110px; display: block; background: var(--bg); border-radius: 10px; border: 1px solid var(--line); }
+.legend { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); direction: ltr; margin-top: 4px; }
+.lights { display: flex; gap: 14px; font-size: 13px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+.lights span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--track); margin-inline-end: 6px; vertical-align: middle; }
+.lights span.hot::before { background: var(--ok); }
+.msg { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 10px; background: var(--bg); }
+.msg .body { white-space: pre-wrap; word-break: break-word; font-size: 17px; }
+.msg .foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; font-size: 12px; color: var(--muted); flex-wrap: wrap; align-items: center; }
+.msg .foot button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--card); color: var(--ink); border-radius: 8px; padding: 3px 10px; cursor: pointer; }
+.empty { color: var(--muted); font-size: 14px; text-align: center; padding: 18px 0 6px; }
+code, .mono { font-family: Consolas, "SF Mono", monospace; font-size: 13px; }
+dl.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; margin: 0; }
+dl.kv dt { color: var(--muted); }
+dl.kv dd { margin: 0; }
+.note { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>همس</h1>
+    <p>نقل بيانات قصيرة بين الأجهزة بالصوت، بدون إنترنت</p>
+  </header>
+
+  <nav role="tablist">
+    <button role="tab" data-tab="send" aria-selected="true">إرسال</button>
+    <button role="tab" data-tab="recv" aria-selected="false">استلام</button>
+    <button role="tab" data-tab="test" aria-selected="false">فحص</button>
+  </nav>
+
+  <section role="tabpanel" id="send" class="on">
+    <div class="card">
+      <label class="field" for="msg">الرسالة</label>
+      <textarea id="msg" placeholder="نص، رمز، رابط، باسورد Wi-Fi..."></textarea>
+      <div class="meta" id="msgMeta"></div>
+    </div>
+    <div class="card" id="modeCard">
+      <h2>طريقة البث</h2>
+      <div class="row" style="margin-top:0">
+        <div class="seg" id="bandSeg">
+          <button data-v="U" aria-pressed="true">فوق سمعي</button>
+          <button data-v="A" aria-pressed="false">مسموع</button>
+        </div>
+        <div class="seg" id="speedSeg">
+          <button data-v="0" aria-pressed="false">متين</button>
+          <button data-v="1" aria-pressed="true">عادي</button>
+          <button data-v="2" aria-pressed="false">سريع</button>
+        </div>
+      </div>
+      <p class="note" id="modeNote"></p>
+      <label class="field" for="vol">مستوى الصوت</label>
+      <input type="range" id="vol" min="0.1" max="1" step="0.05" value="0.9">
+      <div class="row">
+        <label class="check"><input type="checkbox" id="repeat" checked> كرّر البث حتى أوقفه</label>
+      </div>
+    </div>
+    <button class="btn big" id="sendBtn">إرسال</button>
+    <div class="status" id="sendStatus"></div>
+  </section>
+
+  <section role="tabpanel" id="recv">
+    <button class="btn big" id="listenBtn">ابدأ الاستماع</button>
+    <div class="card" style="margin-top:12px">
+      <canvas id="spec" width="640" height="110"></canvas>
+      <div class="legend"><span>0</span><span>5</span><span>10</span><span>15</span><span>20 kHz</span></div>
+      <div class="lights"><span id="litU">فوق سمعي</span><span id="litA">مسموع</span></div>
+      <div class="status" id="recvStatus">الاستماع متوقف.</div>
+      <div class="bar"><i id="recvBar"></i></div>
+    </div>
+    <div class="card">
+      <h2>الرسائل المستلمة</h2>
+      <div id="inbox"><div class="empty">ماكو رسائل بعد.</div></div>
+    </div>
+  </section>
+
+  <section role="tabpanel" id="test">
+    <div class="card">
+      <h2>أي ترددات تمشي بين جهازين؟</h2>
+      <p class="note" style="margin-top:0">على الجهاز المستلم اضغط "قِس الاستقبال"، وعلى الجهاز الثاني اضغط "شغّل المسح". المسح يطلّع نغمات من 15 إلى 21.5 ألف هرتز خلال 4 ثواني.</p>
+      <div class="row">
+        <button class="btn grow" id="measureBtn">قِس الاستقبال</button>
+        <button class="btn ghost grow" id="sweepBtn">شغّل المسح</button>
+      </div>
+      <canvas id="sweepSpec" width="640" height="110" style="margin-top:12px"></canvas>
+      <div class="legend"><span>14</span><span>16</span><span>18</span><span>20</span><span>22 kHz</span></div>
+      <div class="status" id="measureStatus"></div>
+    </div>
+    <div class="card">
+      <h2>هذا الجهاز</h2>
+      <dl class="kv" id="devInfo"><dt>الحالة</dt><dd>تظهر المعلومات بعد أول استماع.</dd></dl>
+    </div>
+    <div class="card">
+      <h2>فحص برمجي بدون سماعة</h2>
+      <p class="note" style="margin-top:0">يمرر رسالة بالطريقة المختارة عبر قناة محاكاة (صدى وضوضاء) ويتأكد إنها تنفك صح.</p>
+      <div class="row"><button class="btn ghost" id="selfTest">شغّل الفحص</button></div>
+      <div class="status mono" id="selfStatus" style="white-space:pre-wrap"></div>
+    </div>
+  </section>
+</main>
+<script type="module" src="app.js"></script>
+</body>
+</html>

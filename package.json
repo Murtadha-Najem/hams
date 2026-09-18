@@ -1,0 +1,9 @@
+{
+  "name": "hams",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node test/codec.mjs && node test/sim.mjs quick",
+    "sim": "node test/sim.mjs"
+  }
+}
