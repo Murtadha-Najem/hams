@@ -10,7 +10,7 @@ const store = {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const SPEED_NAMES = ['متين', 'عادي'];
-const BAND_NAMES = { U: 'فوق سمعي', A: 'مسموع' };
+const BAND_NAMES = { U: 'ما ينسمع', A: 'مسموع' };
 const profileName = (pid) => `${BAND_NAMES[PROFILES[pid].band]}، ${SPEED_NAMES[PROFILES[pid].speed]}`;
 
 // Receipt timing. After the last part of each round the sender falls silent for RECEIPT_SLOTS
@@ -45,12 +45,17 @@ let codes = store.get('codes', []); // [{ label, secret }]
 
 // ---------------------------------------------------------------- tabs
 
-document.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+let mainTab = 'send';
+document.querySelectorAll('.modes button').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+$('openSettings').addEventListener('click', () => showTab('settings'));
+$('closeSettings').addEventListener('click', () => showTab(mainTab));
 function showTab(name) {
-  document.querySelectorAll('nav button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
+  if (name !== 'settings') { mainTab = name; store.set('tab', name); }
+  document.querySelectorAll('.modes button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === name)));
   document.querySelectorAll('section[role="tabpanel"]').forEach((s) => s.classList.toggle('on', s.id === name));
+  $('mainView').hidden = name === 'settings';
   if (name === 'inbox') { unread = 0; renderBadge(); }
-  store.set('tab', name);
+  window.scrollTo(0, 0);
 }
 
 // ---------------------------------------------------------------- audio
@@ -129,12 +134,14 @@ function stopListening() {
 
 function renderListening() {
   $('live').classList.toggle('on', !!listening);
-  $('live').textContent = listening ? 'يستمع' : 'ما يستمع';
-  $('listenBtn').textContent = listening ? 'أوقف الاستماع' : 'ابدأ الاستماع';
-  $('listenBtn').classList.toggle('stop', !!listening);
-  if (!listening) setRecvStatus('الاستماع متوقف.');
+  $('liveText').textContent = listening ? 'يستمع' : 'ما يستمع';
+  $('listenBtn').classList.toggle('on', !!listening);
+  $('specBox').hidden = !listening;
+  $('listenBtn').setAttribute('aria-label', listening ? 'أوقف الاستماع' : 'ابدأ الاستماع');
+  $('listenLabel').textContent = listening ? 'يستمع' : 'اضغط حتى تبدي تستمع';
+  if (!listening) setRecvStatus('الجهاز يلتقط الرسائل بس وهو يستمع.');
   else if (!listening.rx.bands.includes('U')) setRecvStatus('معدل العينات بهذا الجهاز واطي، فيلتقط المسموع بس.', 'warn');
-  else setRecvStatus('يستمع. أي رسالة توصل تظهر هنا.');
+  else setRecvStatus('أي رسالة توصل تظهر تحت. اضغط الدائرة حتى توقف.');
 }
 
 const micError = (e) => (e.name === 'NotAllowedError' ? 'رفض المتصفح الوصول للمايك.' : e.message);
@@ -145,29 +152,33 @@ $('listenBtn').addEventListener('click', async () => {
 });
 
 function setRecvStatus(text, cls = '') {
-  $('recvStatus').className = 'status ' + cls;
+  $('recvStatus').className = 'sub ' + cls;
   $('recvStatus').textContent = text;
 }
 
-const barTimers = new Map();
-function progressBar(el, seconds) {
-  clearInterval(barTimers.get(el));
+const timers = new Map();
+function animate(key, seconds, draw) {
+  clearInterval(timers.get(key));
   const t0 = performance.now();
-  el.style.width = '0';
+  draw(0);
   const t = setInterval(() => {
     const f = Math.min(1, (performance.now() - t0) / 1000 / Math.max(seconds, 0.1));
-    el.style.width = (f * 100).toFixed(1) + '%';
+    draw(f);
     if (f >= 1) clearInterval(t);
-  }, 100);
-  barTimers.set(el, t);
+  }, 80);
+  timers.set(key, t);
 }
+const RING = 2 * Math.PI * 45;
+const drawRing = (f) => { $('sendRing').style.strokeDashoffset = String(RING * (1 - f)); };
+const drawRecv = (f) => { $('recvBar').style.width = (f * 100).toFixed(1) + '%'; };
+const stopAnim = (key, draw) => { clearInterval(timers.get(key)); draw(0); };
 
 function onRxEvent(e) {
   if (e.type === 'incoming') {
     if (ownIds.has(e.id)) return;
     // something is arriving: a sender waiting for receipts keeps listening until it is decoded
     if (sending) sending.busyUntil = Math.max(sending.busyUntil, Date.now() + e.seconds * 1000 + 400);
-    progressBar($('recvBar'), e.seconds);
+    animate('recv', e.seconds, drawRecv);
   } else if (e.type === 'failed' && !ownIds.has(e.id)) {
     $('recvBar').style.width = '0';
     setRecvStatus('وصلت إشارة بس ما انفكت بعد. تنجمع ويا التكرار الجاي.', 'warn');
@@ -241,6 +252,14 @@ function renderBadge() {
   $('badge').classList.toggle('on', unread > 0);
 }
 
+const svgUse = (id) => {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', '#' + id);
+  svg.append(use);
+  return svg;
+};
+
 function renderMessages() {
   const box = $('messages');
   box.textContent = '';
@@ -253,9 +272,18 @@ function renderMessages() {
     body.textContent = m.text;
     const foot = document.createElement('div');
     foot.className = 'foot';
-    if (m.code) { const c = document.createElement('span'); c.className = 'chip lock'; c.textContent = `محمية: ${m.code}`; foot.append(c); }
+    const when = document.createElement('span');
+    when.className = 'when';
+    when.textContent = m.when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    foot.append(when);
+    if (m.code) {
+      const c = document.createElement('span');
+      c.className = 'lock';
+      c.append(svgUse('i-lock'), document.createTextNode(m.code));
+      foot.append(c);
+    }
     const info = document.createElement('span');
-    info.textContent = `${m.when.toLocaleTimeString('ar-IQ', { hour: '2-digit', minute: '2-digit' })}، ${profileName(m.pid)}${m.receipted ? '، انبعث تأكيد الاستلام' : ''}`;
+    info.textContent = m.receipted ? 'انبعث تأكيد الاستلام' : profileName(m.pid);
     const sp = document.createElement('span');
     sp.className = 'sp';
     const copy = document.createElement('button');
@@ -285,6 +313,14 @@ function bindSeg(el, get, set) {
   sync();
 }
 
+document.querySelectorAll('.chip').forEach((chip) => chip.addEventListener('click', () => {
+  const open = chip.getAttribute('aria-expanded') !== 'true';
+  document.querySelectorAll('.chip').forEach((c) => {
+    c.setAttribute('aria-expanded', String(open && c === chip));
+    $(c.dataset.opt).hidden = !(open && c === chip);
+  });
+}));
+
 let privacy = 'public';
 bindSeg($('privSeg'), () => privacy, (v) => { privacy = v; });
 bindSeg($('bandSeg'), () => settings.band, (v) => { settings.band = v; saveSettings(); });
@@ -296,6 +332,7 @@ $('needMinus').addEventListener('click', () => { settings.need = Math.max(0, set
 $('msg').value = store.get('draft', '');
 $('msg').addEventListener('input', () => { store.set('draft', $('msg').value); renderSendForm(); });
 $('codePick').addEventListener('change', renderSendForm);
+$('goCodes').addEventListener('click', () => { showTab('settings'); $('codeLabel').focus(); });
 
 const NOTES = {
   U: 'ما ينسمع عند أغلب البالغين. يحتاج الجهازين بنفس الغرفة، والسماعة مواجهة للمايك.',
@@ -310,12 +347,12 @@ function roundSeconds(bytes, pid) {
 
 function renderSendForm() {
   const pid = currentPid();
-  $('needOut').textContent = settings.need;
-  $('needText').textContent = settings.need === 0
-    ? 'بدون تأكيد: يكرر البث لحد ما توقفه.'
-    : `يوقف لما ${settings.need === 1 ? 'جهاز واحد يأكد' : `${settings.need} أجهزة تأكد`} الاستلام.`;
+  const n = settings.need;
+  $('needOut').textContent = n;
+  $('needText').textContent = n === 0 ? 'بدون حد: يكرر لحد ما توقفه' : n === 1 ? 'مستلم' : 'مستلمين';
+  $('chipNeed').querySelector('span').textContent = n === 0 ? 'يكرر لحد ما توقفه' : n === 1 ? 'يوقف بعد مستلم واحد' : `يوقف بعد ${n} مستلمين`;
   $('modeNote').textContent = `${NOTES[settings.band]} السرعة حوالي ${Math.round(bitsPerSecond(pid) / 8)} بايت بالثانية.`;
-  $('howSummary').textContent = profileName(pid);
+  $('chipMode').querySelector('span').textContent = profileName(pid);
 
   const sealed = privacy === 'sealed';
   $('sealBox').hidden = !sealed;
@@ -326,7 +363,12 @@ function renderSendForm() {
   if (codes.some((c) => c.label === chosen)) pick.value = chosen;
   $('sealNote').textContent = codes.length
     ? 'تنشفر الرسالة، وبس الأجهزة اللي عندها نفس الرمز تگدر تقراها. البقية يتجاهلونها.'
-    : 'ماكو رموز محفوظة. أضف رمز من الإعدادات، ونفس الرمز لازم يكون عند المستلم.';
+    : 'ماكو رموز محفوظة بعد. نفس الرمز لازم يكون عند المستلم.';
+  pick.hidden = !codes.length;
+  $('goCodes').hidden = !!codes.length;
+  $('chipPriv').querySelector('span').textContent = sealed ? `محمية${codes.length ? `: ${pick.value}` : ''}` : 'عامة';
+  $('chipPriv').classList.toggle('sealed', sealed);
+  $('chipPriv').querySelector('use').setAttribute('href', sealed ? '#i-lock' : '#i-globe');
 
   const text = $('msg').value;
   const meta = $('msgMeta');
@@ -374,13 +416,15 @@ function onReceipt(f) {
 $('sendBtn').addEventListener('click', async () => {
   if (sending) { sending.stop = true; if (playing) try { playing.stop(); } catch { /* ended */ } return; }
   const text = $('msg').value;
-  if (!text) { $('sendPanel').classList.add('on'); setSendStatus('اكتب رسالة أولاً.', 'warn'); return; }
+  if (!text) { setSendStatus('اكتب رسالة أولاً.', 'warn'); $('msg').focus(); return; }
   try { await send(text); } catch (e) { setSendStatus(e.message, 'bad'); sending = null; renderSendButton(); }
 });
 
 function renderSendButton() {
-  $('sendBtn').textContent = sending ? 'إيقاف البث' : 'إرسال';
-  $('sendBtn').classList.toggle('stop', !!sending);
+  $('sendBtn').classList.toggle('busy', !!sending);
+  $('sendBtn').setAttribute('aria-label', sending ? 'إيقاف البث' : 'إرسال');
+  $('sendGlyph').querySelector('use').setAttribute('href', sending ? '#i-stop' : '#i-send');
+  $('sendLabel').textContent = sending ? 'إيقاف' : 'إرسال';
   renderSendForm();
 }
 
@@ -394,7 +438,6 @@ async function send(text) {
     content = await seal(content, c.secret);
   }
   const need = settings.need;
-  $('sendPanel').classList.add('on');
   if (need > 0) {
     try { await startListening(); } catch (e) { throw new Error(`تأكيد الاستلام يحتاج المايك: ${micError(e)}`); }
   }
@@ -412,14 +455,14 @@ async function send(text) {
       round++;
       for (let i = 0; i < packets.length && !sending.stop; i++) {
         setSendStatus(`يبث${packets.length > 1 ? ` الجزء ${i + 1} من ${packets.length}` : ''}، الجولة ${round}`);
-        progressBar($('sendBar'), packets[i].length / ctx.sampleRate);
+        animate('send', packets[i].length / ctx.sampleRate, drawRing);
         await play(packets[i]);
         if (i < packets.length - 1) await sleep(120);
       }
       if (sending.stop) break;
       if (need > 0) {
         setSendStatus(`ينتظر تأكيد الاستلام (${sending.receipts.size} من ${need})`);
-        $('sendBar').style.width = '0';
+        stopAnim('send', drawRing);
         const until = Date.now() + windowMs;
         while (!sending.stop && sending.receipts.size < need && Date.now() < Math.max(until, sending.busyUntil)) await sleep(100);
         if (sending.receipts.size >= need) break;
@@ -432,7 +475,7 @@ async function send(text) {
     else if (need > 0 && !sending.stop) setSendStatus(`توقف البث بعد ${round} جولة، وأكد الاستلام ${got} من ${need}.`, 'warn');
     else setSendStatus(`توقف البث بعد ${round} ${round === 1 ? 'جولة' : 'جولات'}${need > 0 ? `، وأكد الاستلام ${got} من ${need}` : ''}.`);
   } finally {
-    $('sendBar').style.width = '0';
+    stopAnim('send', drawRing);
     releaseIds(ids);
     setTimeout(() => ownMsgIds.delete(msgId), 10 * 60 * 1000);
     const { receipts } = sending;
@@ -457,7 +500,6 @@ function renderCodes() {
     const d = document.createElement('div');
     d.className = 'code';
     const b = document.createElement('b'); b.textContent = c.label;
-    const s = document.createElement('span'); s.textContent = '•'.repeat(Math.min(8, c.secret.length));
     const sp = document.createElement('span'); sp.className = 'sp';
     const del = document.createElement('button'); del.textContent = 'حذف';
     del.addEventListener('click', () => {
@@ -467,7 +509,7 @@ function renderCodes() {
       renderCodes();
       renderSendForm();
     });
-    d.append(b, s, sp, del);
+    d.append(svgUse('i-lock'), b, sp, del);
     box.append(d);
   });
 }
@@ -489,16 +531,25 @@ $('codeAdd').addEventListener('click', () => {
 
 // ---------------------------------------------------------------- spectrum, sweep test, device info
 
+// live spectrum, and the listening rings driven by the loudest signal inside the two bands
 function drawSpectrum() {
   const c = $('spec'), g = c.getContext('2d');
   const sc = $('sweepSpec'), sg = sc.getContext('2d');
+  let lvl = 0;
   const tick = () => {
-    if (!listening) return;
+    if (!listening) { $('listenBtn').style.setProperty('--lvl', 0); return; }
     const css = getComputedStyle(document.documentElement);
     const a = listening.analyser;
     const data = new Float32Array(a.frequencyBinCount);
     a.getFloatFrequencyData(data);
-    const nyq = ctx.sampleRate / 2;
+    const nyq = ctx.sampleRate / 2, binHz = nyq / data.length;
+    let peak = -140;
+    for (const [lo, hi] of [[17900, 19900], [1900, 4100]]) {
+      for (let j = Math.floor(lo / binHz); j <= Math.min(data.length - 1, Math.ceil(hi / binHz)); j++) peak = Math.max(peak, data[j]);
+    }
+    const target = Math.max(0, Math.min(1, (peak + 95) / 55));
+    lvl += (target - lvl) * (target > lvl ? 0.5 : 0.08);
+    $('listenBtn').style.setProperty('--lvl', lvl.toFixed(3));
     paint(g, c, data, 0, 22050, nyq, css);
     paint(sg, sc, data, 14000, 22000, nyq, css, measure);
     if (measure) measureTick(data, nyq);
@@ -511,26 +562,34 @@ function paint(g, c, data, fLo, fHi, nyq, css, m = null) {
   const W = c.width, H = c.height;
   g.clearRect(0, 0, W, H);
   const X = (f) => ((f - fLo) / (fHi - fLo)) * W;
-  g.fillStyle = css.getPropertyValue('--accent-soft');
-  for (const [a, b] of [[18000, 19800], [2000, 4000]]) if (b > fLo && a < fHi) g.fillRect(X(Math.max(a, fLo)), 0, X(Math.min(b, fHi)) - X(Math.max(a, fLo)), H);
   const binHz = nyq / data.length;
   const y = (db) => H - Math.max(0, Math.min(1, (db + 120) / 100)) * H;
+  // the two bands Hams uses, as short ticks on the baseline
+  g.fillStyle = css.getPropertyValue('--accent');
+  for (const [a, b] of [[18000, 19800], [2000, 4000]]) if (b > fLo && a < fHi) g.fillRect(X(Math.max(a, fLo)), H - 2, X(Math.min(b, fHi)) - X(Math.max(a, fLo)), 2);
   if (m) {
-    g.strokeStyle = css.getPropertyValue('--warn');
+    g.strokeStyle = css.getPropertyValue('--muted');
+    g.setLineDash([3, 3]);
     g.beginPath();
     m.peak.forEach((db, i) => { const f = m.f0 + i * m.step; if (f <= fHi) g.lineTo(X(f), y(db)); });
     g.stroke();
+    g.setLineDash([]);
   }
-  g.strokeStyle = css.getPropertyValue('--accent');
-  g.lineWidth = 1.5;
-  g.beginPath();
   const i0 = Math.floor(fLo / binHz), i1 = Math.min(data.length - 1, Math.ceil(fHi / binHz));
   const stride = Math.max(1, Math.floor((i1 - i0) / W));
+  g.beginPath();
+  g.moveTo(X(i0 * binHz), H);
   for (let i = i0; i <= i1; i += stride) {
     let mx = -Infinity;
     for (let j = i; j < i + stride && j <= i1; j++) mx = Math.max(mx, data[j]);
     g.lineTo(X(i * binHz), y(mx));
   }
+  g.lineTo(X(i1 * binHz), H);
+  g.closePath();
+  g.fillStyle = css.getPropertyValue('--line');
+  g.fill();
+  g.strokeStyle = css.getPropertyValue('--ink');
+  g.lineWidth = 1;
   g.stroke();
 }
 
