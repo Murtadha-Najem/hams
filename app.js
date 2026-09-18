@@ -1,5 +1,5 @@
-import { buildPacket, Receiver, PROFILES, profileId, airtime, bitsPerSecond } from './modem.js?v=8';
-import { frameMessage, parseFrame, receiptFrame, Assembler, seal, unseal, SEALED, randomId16, chatContent, parseChat, MAX_CONTENT } from './protocol.js?v=8';
+import { buildPacket, Receiver, PROFILES, profileId, airtime, bitsPerSecond } from './modem.js?v=9';
+import { frameMessage, parseFrame, receiptFrame, Assembler, seal, unseal, SEALED, randomId16, chatContent, parseChat, MAX_CONTENT } from './protocol.js?v=9';
 
 const $ = (id) => document.getElementById(id);
 const store = {
@@ -51,6 +51,17 @@ const saveChats = () => {
   for (const k of Object.keys(chats)) if (chats[k].length > 300) chats[k] = chats[k].slice(-300);
   store.set('chat', chats);
 };
+// The public room forgets: messages older than a day are cleared. Groups keep their history.
+const PUBLIC_KEEP_MS = 24 * 60 * 60 * 1000;
+function expirePublic() {
+  const list = chats.public || [];
+  const kept = list.filter((m) => Date.now() - m.t < PUBLIC_KEEP_MS || ['queued', 'sending'].includes(m.status));
+  if (kept.length === list.length) return false;
+  chats.public = kept;
+  saveChats();
+  return true;
+}
+expirePublic();
 const roomList = () => ['public', ...groups.map((g) => 'g:' + g.label)];
 const groupOf = (room) => (room === 'public' ? null : groups.find((g) => 'g:' + g.label === room) || null);
 const roomTitle = (room) => (room === 'public' ? 'Public' : room.slice(2));
@@ -401,7 +412,7 @@ function renderRooms() {
   add.addEventListener('click', () => openSheet('newGroup'));
   box.append(add);
   $('roomInfo').textContent = room === 'public'
-    ? 'Anyone nearby with Hams open can read this room.'
+    ? 'Anyone nearby can read this room. Messages clear after 24 hours.'
     : 'Encrypted with the group code. Only members can read it.';
 }
 
@@ -802,6 +813,7 @@ if (!myName) {
   navigator.permissions?.query({ name: 'microphone' }).then((p) => { if (p.state === 'granted') tryListen(); }).catch(() => {});
   document.addEventListener('pointerdown', async () => { if (ctx && ctx.state !== 'running') { await ctx.resume().catch(() => {}); renderState(); } }, { once: true });
 }
+setInterval(() => { if (expirePublic() && room === 'public') renderThread(); }, 60 * 1000);
 window.hamsReady = true;
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => {});

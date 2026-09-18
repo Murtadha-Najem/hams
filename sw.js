@@ -1,6 +1,6 @@
 // Offline after the first visit: every file of the app is cached and served from the phone.
 // Files are requested with ?v=N, so an update never mixes old and new code.
-const VERSION = 8;
+const VERSION = 9;
 const CACHE = 'hams-v' + VERSION;
 const FILES = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg', ...['app.js', 'modem.js', 'protocol.js', 'codec.js'].map((f) => `${f}?v=${VERSION}`)];
 
