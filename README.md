@@ -4,7 +4,7 @@
 
 Hams ("whisper" in Arabic) is a chat that travels as tones between 18 and 19.8 kHz, above what most adults can hear. Every device in the room with Hams open picks up the tones with its microphone and shows the message. It runs in the browser, and after the first visit it works offline.
 
-**Try it:** https://murtadha203.github.io/hams/
+**Try it:** https://murtadha-najem.github.io/hams/
 
 ## Features
 

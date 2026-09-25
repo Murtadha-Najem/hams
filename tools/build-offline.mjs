@@ -34,7 +34,7 @@ swap(/<link rel="apple-touch-icon"[^>]*>\n/, '');
 swap(/<link rel="icon" href="icon.svg"[^>]*>/, `<link rel="icon" href="${icon}" type="image/svg+xml">`);
 swap(/<link rel="stylesheet" href="fonts\/fonts.css[^"]*">/, `<style>\n${fonts}</style>`);
 swap(/<script type="module" src="app.js[^"]*"><\/script>/, () => `<script type="module">\n${bundle}\n</script>`);
-html = html.replace('<!doctype html>', `<!doctype html>\n<!-- Hams, one-file copy, built ${new Date().toISOString().slice(0, 10)}. https://github.com/murtadha203/hams -->`);
+html = html.replace('<!doctype html>', `<!doctype html>\n<!-- Hams, one-file copy, built ${new Date().toISOString().slice(0, 10)}. https://github.com/Murtadha-Najem/hams -->`);
 
 writeFileSync(new URL('hams-offline.html', root), html);
 console.log(`hams-offline.html: ${(html.length / 1024).toFixed(0)} KB`);
